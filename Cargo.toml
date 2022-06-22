@@ -1,0 +1,21 @@
+[package]
+name = "once_map"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.56"
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+description = "Single assignment maps"
+
+repository = "https://github.com/a1phyr/assets_manager"
+documentation = "https://docs.rs/once_map"
+
+categories = ["caching", "data-structures", "memory-management", "rust-patterns"]
+
+[dependencies]
+parking_lot = "0.12"
+hashbrown = "0.12"
+stable_deref_trait = "1.2"
+
+[dev-dependencies]
+crossbeam-utils = "0.8.7"
