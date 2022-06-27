@@ -10,12 +10,19 @@ description = "Single assignment maps"
 repository = "https://github.com/a1phyr/assets_manager"
 documentation = "https://docs.rs/once_map"
 
-categories = ["caching", "data-structures", "memory-management", "rust-patterns"]
+categories = ["caching", "data-structures", "memory-management", "rust-patterns", "no_std"]
+
+
+[features]
+default = ["std"]
+std = ["parking_lot", "stable_deref_trait/std"]
 
 [dependencies]
-parking_lot = "0.12"
-hashbrown = "0.12"
-stable_deref_trait = "1.2"
+hashbrown ="0.12"
+stable_deref_trait = { version = "1.2", features = ["alloc"], default-features = false }
+
+parking_lot = { version = "0.12", optional = true }
+spin = { version = "0.9.3", default-features = false, features = ["rwlock"], optional = true }
 
 [dev-dependencies]
 crossbeam-utils = "0.8.7"

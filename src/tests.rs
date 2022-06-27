@@ -11,7 +11,7 @@ fn smoke_test() {
 #[test]
 fn concurrent_init() {
     let store = OnceMap::new();
-    let count = Mutex::new(0);
+    let count = parking_lot::Mutex::new(0);
 
     crossbeam_utils::thread::scope(|s| {
         s.spawn(|_| {
