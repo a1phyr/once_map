@@ -1,3 +1,4 @@
+use crate::HashMapExt;
 use alloc::boxed::Box;
 use core::{
     borrow::Borrow,
@@ -6,59 +7,8 @@ use core::{
     ptr::NonNull,
 };
 use hashbrown::{hash_map, HashMap};
+use parking_lot::{Condvar, Mutex, MutexGuard, RwLock};
 use stable_deref_trait::StableDeref;
-
-pub(crate) use parking_lot::{Condvar, Mutex, MutexGuard, RwLock};
-
-trait HashMapExt {
-    type Key;
-    type Value;
-    type Hasher;
-
-    fn get_raw_entry<Q>(&self, hash: u64, key: &Q) -> Option<(&Self::Key, &Self::Value)>
-    where
-        Q: Eq + Hash + ?Sized,
-        Self::Key: Borrow<Q>;
-
-    fn get_raw_entry_mut<Q>(
-        &mut self,
-        hash: u64,
-        key: &Q,
-    ) -> hash_map::RawEntryMut<Self::Key, Self::Value, Self::Hasher>
-    where
-        Q: Eq + Hash + ?Sized,
-        Self::Key: Borrow<Q>;
-}
-
-impl<K, V, S> HashMapExt for HashMap<K, V, S>
-where
-    K: Hash + Eq,
-    S: BuildHasher,
-{
-    type Key = K;
-    type Value = V;
-    type Hasher = S;
-
-    fn get_raw_entry<Q>(&self, hash: u64, key: &Q) -> Option<(&Self::Key, &Self::Value)>
-    where
-        Q: Eq + Hash + ?Sized,
-        Self::Key: Borrow<Q>,
-    {
-        self.raw_entry().from_key_hashed_nocheck(hash, key)
-    }
-
-    fn get_raw_entry_mut<Q>(
-        &mut self,
-        hash: u64,
-        key: &Q,
-    ) -> hash_map::RawEntryMut<Self::Key, Self::Value, Self::Hasher>
-    where
-        Q: Eq + Hash + ?Sized,
-        Self::Key: Borrow<Q>,
-    {
-        self.raw_entry_mut().from_key_hashed_nocheck(hash, key)
-    }
-}
 
 unsafe fn extend_lifetime<'a, T: StableDeref>(ptr: &T) -> &'a T::Target {
     &*(&**ptr as *const T::Target)
