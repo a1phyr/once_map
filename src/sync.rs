@@ -5,14 +5,10 @@ use core::{
     hash::{BuildHasher, Hash, Hasher},
     ptr::NonNull,
 };
-
 use hashbrown::{hash_map, HashMap};
 use stable_deref_trait::StableDeref;
 
-#[cfg(feature = "std")]
 pub(crate) use parking_lot::{Condvar, Mutex, MutexGuard, RwLock};
-#[cfg(feature = "spin")]
-pub(crate) use spin::RwLock;
 
 trait HashMapExt {
     type Key;
@@ -68,7 +64,6 @@ unsafe fn extend_lifetime<'a, T: StableDeref>(ptr: &T) -> &'a T::Target {
     &*(&**ptr as *const T::Target)
 }
 
-#[cfg(feature = "std")]
 enum Void {}
 
 struct ValidPtr<T>(NonNull<T>);
@@ -114,19 +109,17 @@ impl<T: Eq> Eq for ValidPtr<T> {}
 
 /// Looks like a Condvar, but wait for all notified threads to wake up when
 /// calling `notify_all`.
-#[cfg(feature = "std")]
+
 struct WaitingBarrier {
     condvar: Condvar,
     n_waiters: Mutex<usize>,
 }
 
-#[cfg(feature = "std")]
 struct Waiter<'a> {
     guard: MutexGuard<'a, usize>,
     condvar: &'a Condvar,
 }
 
-#[cfg(feature = "std")]
 impl WaitingBarrier {
     fn new() -> Self {
         Self {
@@ -155,14 +148,12 @@ impl WaitingBarrier {
     }
 }
 
-#[cfg(feature = "std")]
 impl Waiter<'_> {
     fn wait(mut self) {
         self.condvar.wait(&mut self.guard);
     }
 }
 
-#[cfg(feature = "std")]
 impl Drop for Waiter<'_> {
     fn drop(&mut self) {
         *self.guard -= 1;
@@ -172,27 +163,22 @@ impl Drop for Waiter<'_> {
     }
 }
 
-#[cfg(feature = "std")]
 struct BarrierGuard<'a>(&'a WaitingBarrier);
 
-#[cfg(feature = "std")]
 impl Drop for BarrierGuard<'_> {
     fn drop(&mut self) {
         self.0.notify_all();
     }
 }
 
-#[cfg(feature = "std")]
 type Waiters<K, S> = Mutex<HashMap<ValidPtr<K>, ValidPtr<WaitingBarrier>, S>>;
 
-#[cfg(feature = "std")]
 struct WaitersGuard<'a, K: Eq + Hash, S: BuildHasher> {
     waiters: &'a Waiters<K, S>,
     key: &'a K,
     hash: u64,
 }
 
-#[cfg(feature = "std")]
 impl<'a, K: Eq + Hash, S: BuildHasher> Drop for WaitersGuard<'a, K, S> {
     fn drop(&mut self) {
         let mut writing = self.waiters.lock();
@@ -209,14 +195,7 @@ struct Shard<K, V, S> {
     map: RwLock<HashMap<K, V, S>>,
 
     // This lock should always be taken after `map`
-    #[cfg(feature = "std")]
     waiters: Waiters<K, S>,
-}
-
-fn hash_one<S: BuildHasher, Q: Hash + ?Sized>(hash_builder: &S, key: &Q) -> u64 {
-    let mut hasher = hash_builder.build_hasher();
-    key.hash(&mut hasher);
-    hasher.finish()
 }
 
 impl<K, V, S> Shard<K, V, S>
@@ -226,7 +205,6 @@ where
     fn new(hash_builder: S) -> Self {
         Self {
             map: RwLock::new(HashMap::with_hasher(hash_builder.clone())),
-            #[cfg(feature = "std")]
             waiters: Mutex::new(HashMap::with_hasher(hash_builder)),
         }
     }
@@ -248,16 +226,6 @@ where
         Some(with_result(k, v))
     }
 
-    fn insert<G, T>(&self, hash: u64, key: K, value: V, with_result: G) -> T
-    where
-        G: FnOnce(&K, &V) -> T,
-    {
-        let mut this = self.map.write();
-        let (key, value) = this.get_raw_entry_mut(hash, &key).or_insert(key, value);
-        with_result(key, value)
-    }
-
-    #[cfg(feature = "std")]
     fn get_or_try_insert_with<F, G, E, T, U>(
         &self,
         hash: u64,
@@ -306,7 +274,7 @@ where
                     // on it.
                     let key_ref = ValidPtr(NonNull::from(&key));
                     let barrier_ref = ValidPtr(NonNull::from(&barrier));
-                    entry.insert(key_ref, barrier_ref);
+                    entry.insert_hashed_nocheck(hash, key_ref, barrier_ref);
                     break;
                 }
             }
@@ -350,7 +318,12 @@ where
         core::mem::forget(guard);
 
         // We can finally insert the value in the map.
-        map.get_raw_entry_mut(hash, &key).or_insert(key, value);
+        match map.get_raw_entry_mut(hash, &key) {
+            hash_map::RawEntryMut::Vacant(entry) => {
+                entry.insert_hashed_nocheck(hash, key, value);
+            }
+            hash_map::RawEntryMut::Occupied(_) => panic!("re-entrant init"),
+        }
         Ok(ret)
 
         // Leaving the function will wake up waiting threads.
@@ -436,7 +409,7 @@ where
         Q: Eq + Hash + ?Sized,
         K: Borrow<Q>,
     {
-        hash_one(&self.hash_builder, key)
+        crate::hash_one(&self.hash_builder, key)
     }
 
     fn get_shard(&self, hash: u64) -> &Shard<K, V, S> {
@@ -492,11 +465,6 @@ where
         self.map_get(key, |_, v| unsafe { extend_lifetime(v) })
     }
 
-    pub fn insert(&self, key: K, value: V) -> &V::Target {
-        self.map_insert(key, value, |_, v| unsafe { extend_lifetime(v) })
-    }
-
-    #[cfg(feature = "std")]
     pub fn insert_with<M>(&self, key: K, make_val: M) -> &V::Target
     where
         M: FnOnce(&K) -> V,
@@ -504,7 +472,6 @@ where
         self.map_insert_with(key, make_val, |_, v| unsafe { extend_lifetime(v) })
     }
 
-    #[cfg(feature = "std")]
     pub fn try_insert_with<M, E>(&self, key: K, make_val: M) -> Result<&V::Target, E>
     where
         M: FnOnce(&K) -> Result<V, E>,
@@ -531,7 +498,6 @@ where
         self.map_insert(key, value, |_, v| v.clone())
     }
 
-    #[cfg(feature = "std")]
     pub fn insert_with_cloned<M>(&self, key: K, make_val: M) -> V
     where
         M: FnOnce(&K) -> V,
@@ -539,7 +505,6 @@ where
         self.map_insert_with(key, make_val, |_, v| v.clone())
     }
 
-    #[cfg(feature = "std")]
     pub fn try_insert_with_cloned<M, E>(&self, key: K, make_val: M) -> Result<V, E>
     where
         M: FnOnce(&K) -> Result<V, E>,
@@ -567,11 +532,9 @@ where
     where
         F: FnOnce(&K, &V) -> T,
     {
-        let hash = self.hash_one(&key);
-        self.get_shard(hash).insert(hash, key, value, with_result)
+        self.map_insert_with(key, |_| value, with_result)
     }
 
-    #[cfg(feature = "std")]
     pub fn map_insert_with<M, F, T>(&self, key: K, make_val: M, with_result: F) -> T
     where
         M: FnOnce(&K) -> V,
@@ -584,7 +547,6 @@ where
         }
     }
 
-    #[cfg(feature = "std")]
     pub fn map_try_insert_with<M, E, F, T>(
         &self,
         key: K,
@@ -607,7 +569,6 @@ where
         )
     }
 
-    #[cfg(feature = "std")]
     pub fn get_or_insert_with<F, G, T, U>(&self, key: K, data: T, on_vacant: F, on_occupied: G) -> U
     where
         F: FnOnce(T, &K) -> (V, U),
@@ -621,7 +582,6 @@ where
         }
     }
 
-    #[cfg(feature = "std")]
     pub fn get_or_try_insert_with<F, G, E, T, U>(
         &self,
         key: K,

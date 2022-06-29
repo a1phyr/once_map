@@ -2,10 +2,10 @@
 
 extern crate alloc;
 
-#[cfg(any(feature = "std", feature = "spin"))]
+#[cfg(feature = "std")]
 pub mod sync;
 
-#[cfg(any(feature = "std", feature = "spin"))]
+#[cfg(feature = "std")]
 pub use sync::OnceMap;
 
 #[cfg(test)]
