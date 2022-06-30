@@ -218,17 +218,6 @@ where
         )
     }
 
-    pub fn get_or_insert_with<T, U>(
-        &self,
-        key: K,
-        data: T,
-        on_vacant: impl FnOnce(T, &K) -> (V, U),
-        on_occupied: impl FnOnce(T, &K, &V) -> U,
-    ) -> U {
-        self.get_or_try_insert_with(key, data, |data, k| Ok(on_vacant(data, k)), on_occupied)
-            .unwrap_infallible()
-    }
-
     pub fn get_or_try_insert_with<T, U, E>(
         &self,
         key: K,
