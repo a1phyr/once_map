@@ -672,3 +672,15 @@ where
             .map_insert_ref(key, Q::to_owned, &self.init, with_result)
     }
 }
+
+impl<K, V, S> fmt::Debug for LazyMap<K, V, S>
+where
+    K: fmt::Debug,
+    V: fmt::Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("LazyMap")
+            .field("values", &self.map)
+            .finish_non_exhaustive()
+    }
+}

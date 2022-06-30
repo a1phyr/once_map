@@ -1,11 +1,11 @@
 use crate::{HashMapExt, InfallibleResult};
+use alloc::borrow::ToOwned;
 use core::{
     borrow::Borrow,
     cell::RefCell,
     fmt,
     hash::{BuildHasher, Hash},
 };
-use alloc::borrow::ToOwned;
 use hashbrown::{hash_map, HashMap};
 use stable_deref_trait::StableDeref;
 
@@ -356,5 +356,17 @@ where
     {
         self.map
             .map_insert_ref(key, Q::to_owned, &self.init, with_result)
+    }
+}
+
+impl<K, V, S> fmt::Debug for LazyMap<K, V, S>
+where
+    K: fmt::Debug,
+    V: fmt::Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("LazyMap")
+            .field("values", &self.map)
+            .finish_non_exhaustive()
     }
 }
