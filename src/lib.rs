@@ -6,7 +6,7 @@ extern crate alloc;
 pub mod sync;
 
 #[cfg(feature = "std")]
-pub use sync::{OnceMap, LazyMap};
+pub use sync::{LazyMap, OnceMap};
 
 pub mod unsync;
 

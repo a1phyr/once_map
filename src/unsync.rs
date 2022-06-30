@@ -88,17 +88,15 @@ where
         self.map_get(key, |_, v| unsafe { extend_lifetime(v) })
     }
 
-    pub fn insert_with<M>(&self, key: K, make_val: M) -> &V::Target
-    where
-        M: FnOnce(&K) -> V,
-    {
+    pub fn insert_with(&self, key: K, make_val: impl FnOnce(&K) -> V) -> &V::Target {
         self.map_insert_with(key, make_val, |_, v| unsafe { extend_lifetime(v) })
     }
 
-    pub fn try_insert_with<M, E>(&self, key: K, make_val: M) -> Result<&V::Target, E>
-    where
-        M: FnOnce(&K) -> Result<V, E>,
-    {
+    pub fn try_insert_with<E>(
+        &self,
+        key: K,
+        make_val: impl FnOnce(&K) -> Result<V, E>,
+    ) -> Result<&V::Target, E> {
         self.map_try_insert_with(key, make_val, |_, v| unsafe { extend_lifetime(v) })
     }
 }
@@ -121,17 +119,15 @@ where
         self.map_insert(key, value, |_, v| v.clone())
     }
 
-    pub fn insert_with_cloned<M>(&self, key: K, make_val: M) -> V
-    where
-        M: FnOnce(&K) -> V,
-    {
+    pub fn insert_with_cloned(&self, key: K, make_val: impl FnOnce(&K) -> V) -> V {
         self.map_insert_with(key, make_val, |_, v| v.clone())
     }
 
-    pub fn try_insert_with_cloned<M, E>(&self, key: K, make_val: M) -> Result<V, E>
-    where
-        M: FnOnce(&K) -> Result<V, E>,
-    {
+    pub fn try_insert_with_cloned<E>(
+        &self,
+        key: K,
+        make_val: impl FnOnce(&K) -> Result<V, E>,
+    ) -> Result<V, E> {
         self.map_try_insert_with(key, make_val, |_, v| v.clone())
     }
 }
@@ -141,61 +137,51 @@ where
     K: Eq + Hash,
     S: BuildHasher,
 {
-    pub fn map_get<Q, F, T>(&self, key: &Q, with_result: F) -> Option<T>
+    pub fn map_get<Q, T>(&self, key: &Q, with_result: impl FnOnce(&K, &V) -> T) -> Option<T>
     where
         Q: Eq + Hash + ?Sized,
         K: Borrow<Q>,
-        F: FnOnce(&K, &V) -> T,
     {
         let map = self.map.borrow();
         let (key, value) = map.get_key_value(key)?;
         Some(with_result(key, value))
     }
 
-    pub fn map_insert<F, T>(&self, key: K, value: V, with_result: F) -> T
-    where
-        F: FnOnce(&K, &V) -> T,
-    {
+    pub fn map_insert<T>(&self, key: K, value: V, with_result: impl FnOnce(&K, &V) -> T) -> T {
         self.map_insert_with(key, |_| value, with_result)
     }
 
-    pub fn map_insert_with<M, F, T>(&self, key: K, make_val: M, with_result: F) -> T
-    where
-        M: FnOnce(&K) -> V,
-        F: FnOnce(&K, &V) -> T,
-    {
+    pub fn map_insert_with<T>(
+        &self,
+        key: K,
+        make_val: impl FnOnce(&K) -> V,
+        with_result: impl FnOnce(&K, &V) -> T,
+    ) -> T {
         self.map_try_insert_with(key, |k| Ok(make_val(k)), with_result)
             .unwrap_infallible()
     }
 
-    pub fn map_insert_with_ref<Q, MK, M, F, T>(
+    pub fn map_insert_with_ref<Q, T>(
         &self,
         key: &Q,
-        make_key: MK,
-        make_val: M,
-        with_result: F,
+        make_key: impl FnOnce(&Q) -> K,
+        make_val: impl FnOnce(&K) -> V,
+        with_result: impl FnOnce(&K, &V) -> T,
     ) -> T
     where
         Q: Eq + Hash + ?Sized,
         K: Borrow<Q>,
-        MK: FnOnce(&Q) -> K,
-        M: FnOnce(&K) -> V,
-        F: FnOnce(&K, &V) -> T,
     {
         self.map_try_insert_with_ref(key, make_key, |k| Ok(make_val(k)), with_result)
             .unwrap_infallible()
     }
 
-    pub fn map_try_insert_with<M, E, F, T>(
+    pub fn map_try_insert_with<T, E>(
         &self,
         key: K,
-        make_val: M,
-        with_result: F,
-    ) -> Result<T, E>
-    where
-        M: FnOnce(&K) -> Result<V, E>,
-        F: FnOnce(&K, &V) -> T,
-    {
+        make_val: impl FnOnce(&K) -> Result<V, E>,
+        with_result: impl FnOnce(&K, &V) -> T,
+    ) -> Result<T, E> {
         self.get_or_try_insert_with(
             key,
             with_result,
@@ -208,19 +194,16 @@ where
         )
     }
 
-    pub fn map_try_insert_with_ref<Q, MK, M, E, F, T>(
+    pub fn map_try_insert_with_ref<Q, T, E>(
         &self,
         key: &Q,
-        make_key: MK,
-        make_val: M,
-        with_result: F,
+        make_key: impl FnOnce(&Q) -> K,
+        make_val: impl FnOnce(&K) -> Result<V, E>,
+        with_result: impl FnOnce(&K, &V) -> T,
     ) -> Result<T, E>
     where
         Q: Eq + Hash + ?Sized,
         K: Borrow<Q>,
-        MK: FnOnce(&Q) -> K,
-        M: FnOnce(&K) -> Result<V, E>,
-        F: FnOnce(&K, &V) -> T,
     {
         self.get_or_try_insert_with_ref(
             key,
@@ -235,26 +218,24 @@ where
         )
     }
 
-    pub fn get_or_insert_with<F, G, T, U>(&self, key: K, data: T, on_vacant: F, on_occupied: G) -> U
-    where
-        F: FnOnce(T, &K) -> (V, U),
-        G: FnOnce(T, &K, &V) -> U,
-    {
+    pub fn get_or_insert_with<T, U>(
+        &self,
+        key: K,
+        data: T,
+        on_vacant: impl FnOnce(T, &K) -> (V, U),
+        on_occupied: impl FnOnce(T, &K, &V) -> U,
+    ) -> U {
         self.get_or_try_insert_with(key, data, |data, k| Ok(on_vacant(data, k)), on_occupied)
             .unwrap_infallible()
     }
 
-    pub fn get_or_try_insert_with<F, G, E, T, U>(
+    pub fn get_or_try_insert_with<T, U, E>(
         &self,
         key: K,
         data: T,
-        on_vacant: F,
-        on_occupied: G,
-    ) -> Result<U, E>
-    where
-        F: FnOnce(T, &K) -> Result<(V, U), E>,
-        G: FnOnce(T, &K, &V) -> U,
-    {
+        on_vacant: impl FnOnce(T, &K) -> Result<(V, U), E>,
+        on_occupied: impl FnOnce(T, &K, &V) -> U,
+    ) -> Result<U, E> {
         let map = self.map.borrow();
         let hash = crate::hash_one(map.hasher(), &key);
 
@@ -270,20 +251,17 @@ where
         Ok(ret)
     }
 
-    pub fn get_or_try_insert_with_ref<Q, F, G, MK, E, T, U>(
+    pub fn get_or_try_insert_with_ref<Q, T, U, E>(
         &self,
         key: &Q,
         data: T,
-        make_key: MK,
-        on_vacant: F,
-        on_occupied: G,
+        make_key: impl FnOnce(&Q) -> K,
+        on_vacant: impl FnOnce(T, &K) -> Result<(V, U), E>,
+        on_occupied: impl FnOnce(T, &K, &V) -> U,
     ) -> Result<U, E>
     where
         Q: Eq + Hash + ?Sized,
         K: Borrow<Q>,
-        MK: FnOnce(&Q) -> K,
-        F: FnOnce(T, &K) -> Result<(V, U), E>,
-        G: FnOnce(T, &K, &V) -> U,
     {
         let map = self.map.borrow();
         let hash = crate::hash_one(map.hasher(), key);
@@ -389,11 +367,10 @@ where
     S: BuildHasher,
     F: Fn(&K) -> V,
 {
-    pub fn map_get<Q, G, T>(&self, key: &Q, with_result: G) -> T
+    pub fn map_get<Q, T>(&self, key: &Q, with_result: impl FnOnce(&K, &V) -> T) -> T
     where
         Q: Eq + Hash + ToOwned<Owned = K>,
         K: Borrow<Q>,
-        G: FnOnce(&K, &V) -> T,
     {
         self.map
             .map_insert_with_ref(key, Q::to_owned, &self.init, with_result)
