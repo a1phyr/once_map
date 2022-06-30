@@ -186,7 +186,7 @@ where
         }
     }
 
-    fn get_or_try_insert_with<E, T, U>(
+    fn get_or_try_insert<E, T, U>(
         &self,
         hash: u64,
         key: K,
@@ -421,16 +421,16 @@ where
         self.map_get(key, |_, v| unsafe { extend_lifetime(v) })
     }
 
-    pub fn insert_with(&self, key: K, make_val: impl FnOnce(&K) -> V) -> &V::Target {
-        self.map_insert_with(key, make_val, |_, v| unsafe { extend_lifetime(v) })
+    pub fn insert(&self, key: K, make_val: impl FnOnce(&K) -> V) -> &V::Target {
+        self.map_insert(key, make_val, |_, v| unsafe { extend_lifetime(v) })
     }
 
-    pub fn try_insert_with<E>(
+    pub fn try_insert<E>(
         &self,
         key: K,
         make_val: impl FnOnce(&K) -> Result<V, E>,
     ) -> Result<&V::Target, E> {
-        self.map_try_insert_with(key, make_val, |_, v| unsafe { extend_lifetime(v) })
+        self.map_try_insert(key, make_val, |_, v| unsafe { extend_lifetime(v) })
     }
 }
 
@@ -448,20 +448,16 @@ where
         self.map_get(key, |_, v| v.clone())
     }
 
-    pub fn insert_cloned(&self, key: K, value: V) -> V {
-        self.map_insert(key, value, |_, v| v.clone())
+    pub fn insert_cloned(&self, key: K, make_val: impl FnOnce(&K) -> V) -> V {
+        self.map_insert(key, make_val, |_, v| v.clone())
     }
 
-    pub fn insert_with_cloned(&self, key: K, make_val: impl FnOnce(&K) -> V) -> V {
-        self.map_insert_with(key, make_val, |_, v| v.clone())
-    }
-
-    pub fn try_insert_with_cloned<E>(
+    pub fn try_insert_cloned<E>(
         &self,
         key: K,
         make_val: impl FnOnce(&K) -> Result<V, E>,
     ) -> Result<V, E> {
-        self.map_try_insert_with(key, make_val, |_, v| v.clone())
+        self.map_try_insert(key, make_val, |_, v| v.clone())
     }
 }
 
@@ -479,21 +475,17 @@ where
         self.get_shard(hash).get(hash, key, with_result)
     }
 
-    pub fn map_insert<T>(&self, key: K, value: V, with_result: impl FnOnce(&K, &V) -> T) -> T {
-        self.map_insert_with(key, |_| value, with_result)
-    }
-
-    pub fn map_insert_with<T>(
+    pub fn map_insert<T>(
         &self,
         key: K,
         make_val: impl FnOnce(&K) -> V,
         with_result: impl FnOnce(&K, &V) -> T,
     ) -> T {
-        self.map_try_insert_with(key, |k| Ok(make_val(k)), with_result)
+        self.map_try_insert(key, |k| Ok(make_val(k)), with_result)
             .unwrap_infallible()
     }
 
-    pub fn map_insert_with_ref<Q, T>(
+    pub fn map_insert_ref<Q, T>(
         &self,
         key: &Q,
         make_key: impl FnOnce(&Q) -> K,
@@ -504,17 +496,17 @@ where
         Q: Eq + Hash + ?Sized,
         K: Borrow<Q>,
     {
-        self.map_try_insert_with_ref(key, make_key, |k| Ok(make_val(k)), with_result)
+        self.map_try_insert_ref(key, make_key, |k| Ok(make_val(k)), with_result)
             .unwrap_infallible()
     }
 
-    pub fn map_try_insert_with<T, E>(
+    pub fn map_try_insert<T, E>(
         &self,
         key: K,
         make_val: impl FnOnce(&K) -> Result<V, E>,
         with_result: impl FnOnce(&K, &V) -> T,
     ) -> Result<T, E> {
-        self.get_or_try_insert_with(
+        self.get_or_try_insert(
             key,
             with_result,
             |with_result, k| {
@@ -526,7 +518,7 @@ where
         )
     }
 
-    pub fn map_try_insert_with_ref<Q, T, E>(
+    pub fn map_try_insert_ref<Q, T, E>(
         &self,
         key: &Q,
         make_key: impl FnOnce(&Q) -> K,
@@ -537,7 +529,7 @@ where
         Q: Eq + Hash + ?Sized,
         K: Borrow<Q>,
     {
-        self.get_or_try_insert_with_ref(
+        self.get_or_try_insert_ref(
             key,
             with_result,
             make_key,
@@ -550,7 +542,7 @@ where
         )
     }
 
-    pub fn get_or_try_insert_with<T, U, E>(
+    pub fn get_or_try_insert<T, U, E>(
         &self,
         key: K,
         data: T,
@@ -559,10 +551,10 @@ where
     ) -> Result<U, E> {
         let hash = self.hash_one(&key);
         self.get_shard(hash)
-            .get_or_try_insert_with(hash, key, data, on_vacant, on_occupied)
+            .get_or_try_insert(hash, key, data, on_vacant, on_occupied)
     }
 
-    pub fn get_or_try_insert_with_ref<Q, T, U, E>(
+    pub fn get_or_try_insert_ref<Q, T, U, E>(
         &self,
         key: &Q,
         data: T,
@@ -582,7 +574,7 @@ where
         shard.try_get(hash, key, data, on_occupied).or_else(
             #[cold]
             |(data, on_occupied)| {
-                shard.get_or_try_insert_with(hash, make_key(key), data, on_vacant, on_occupied)
+                shard.get_or_try_insert(hash, make_key(key), data, on_vacant, on_occupied)
             },
         )
     }
@@ -677,6 +669,6 @@ where
         K: Borrow<Q>,
     {
         self.map
-            .map_insert_with_ref(key, Q::to_owned, &self.init, with_result)
+            .map_insert_ref(key, Q::to_owned, &self.init, with_result)
     }
 }

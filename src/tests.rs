@@ -4,11 +4,12 @@ use std::{thread, time};
 #[test]
 fn smoke_test() {
     let store = OnceMap::new();
-    let val = store.insert_with(String::from("aaa"), |_| String::from("bbb"));
+    let val = store.insert(String::from("aaa"), |_| String::from("bbb"));
     assert_eq!(val, store.get("aaa").unwrap());
 }
 
 #[test]
+#[cfg_attr(miri, ignore)]
 fn concurrent_init() {
     let store = OnceMap::new();
     let count = parking_lot::Mutex::new(0);
@@ -16,7 +17,7 @@ fn concurrent_init() {
     crossbeam_utils::thread::scope(|s| {
         s.spawn(|_| {
             thread::sleep(time::Duration::from_millis(50));
-            store.insert_with(String::from("aaa"), |_| {
+            store.insert(String::from("aaa"), |_| {
                 thread::sleep(time::Duration::from_millis(50));
                 *count.lock() += 1;
                 String::from("bbb")
@@ -25,7 +26,7 @@ fn concurrent_init() {
 
         s.spawn(|_| {
             thread::sleep(time::Duration::from_millis(50));
-            store.insert_with(String::from("aaa"), |_| {
+            store.insert(String::from("aaa"), |_| {
                 thread::sleep(time::Duration::from_millis(50));
                 *count.lock() += 1;
                 String::from("bbb")
@@ -33,7 +34,7 @@ fn concurrent_init() {
         });
 
         store
-            .try_insert_with(String::from("aaa"), |_| {
+            .try_insert(String::from("aaa"), |_| {
                 thread::sleep(time::Duration::from_millis(200));
                 *count.lock() += 2;
                 Err(())
@@ -50,9 +51,9 @@ fn concurrent_init() {
 fn reentrant_init() {
     let store = OnceMap::with_single_shard();
 
-    let res = store.insert_with(String::from("aaa"), |_| {
-        let x = store.insert_with_cloned(String::from("bbb"), |_| String::from("x"));
-        let y = store.insert_with(String::from("ccc"), |_| String::from("y"));
+    let res = store.insert(String::from("aaa"), |_| {
+        let x = store.insert_cloned(String::from("bbb"), |_| String::from("x"));
+        let y = store.insert(String::from("ccc"), |_| String::from("y"));
         assert!(store.get("aaa").is_none());
         x + y
     });

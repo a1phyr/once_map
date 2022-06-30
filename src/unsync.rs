@@ -5,6 +5,7 @@ use core::{
     fmt,
     hash::{BuildHasher, Hash},
 };
+use alloc::borrow::ToOwned;
 use hashbrown::{hash_map, HashMap};
 use stable_deref_trait::StableDeref;
 
@@ -88,16 +89,16 @@ where
         self.map_get(key, |_, v| unsafe { extend_lifetime(v) })
     }
 
-    pub fn insert_with(&self, key: K, make_val: impl FnOnce(&K) -> V) -> &V::Target {
-        self.map_insert_with(key, make_val, |_, v| unsafe { extend_lifetime(v) })
+    pub fn insert(&self, key: K, make_val: impl FnOnce(&K) -> V) -> &V::Target {
+        self.map_insert(key, make_val, |_, v| unsafe { extend_lifetime(v) })
     }
 
-    pub fn try_insert_with<E>(
+    pub fn try_insert<E>(
         &self,
         key: K,
         make_val: impl FnOnce(&K) -> Result<V, E>,
     ) -> Result<&V::Target, E> {
-        self.map_try_insert_with(key, make_val, |_, v| unsafe { extend_lifetime(v) })
+        self.map_try_insert(key, make_val, |_, v| unsafe { extend_lifetime(v) })
     }
 }
 
@@ -115,20 +116,16 @@ where
         self.map_get(key, |_, v| v.clone())
     }
 
-    pub fn insert_cloned(&self, key: K, value: V) -> V {
-        self.map_insert(key, value, |_, v| v.clone())
+    pub fn insert_cloned(&self, key: K, make_val: impl FnOnce(&K) -> V) -> V {
+        self.map_insert(key, make_val, |_, v| v.clone())
     }
 
-    pub fn insert_with_cloned(&self, key: K, make_val: impl FnOnce(&K) -> V) -> V {
-        self.map_insert_with(key, make_val, |_, v| v.clone())
-    }
-
-    pub fn try_insert_with_cloned<E>(
+    pub fn try_insert_cloned<E>(
         &self,
         key: K,
         make_val: impl FnOnce(&K) -> Result<V, E>,
     ) -> Result<V, E> {
-        self.map_try_insert_with(key, make_val, |_, v| v.clone())
+        self.map_try_insert(key, make_val, |_, v| v.clone())
     }
 }
 
@@ -147,21 +144,17 @@ where
         Some(with_result(key, value))
     }
 
-    pub fn map_insert<T>(&self, key: K, value: V, with_result: impl FnOnce(&K, &V) -> T) -> T {
-        self.map_insert_with(key, |_| value, with_result)
-    }
-
-    pub fn map_insert_with<T>(
+    pub fn map_insert<T>(
         &self,
         key: K,
         make_val: impl FnOnce(&K) -> V,
         with_result: impl FnOnce(&K, &V) -> T,
     ) -> T {
-        self.map_try_insert_with(key, |k| Ok(make_val(k)), with_result)
+        self.map_try_insert(key, |k| Ok(make_val(k)), with_result)
             .unwrap_infallible()
     }
 
-    pub fn map_insert_with_ref<Q, T>(
+    pub fn map_insert_ref<Q, T>(
         &self,
         key: &Q,
         make_key: impl FnOnce(&Q) -> K,
@@ -172,17 +165,17 @@ where
         Q: Eq + Hash + ?Sized,
         K: Borrow<Q>,
     {
-        self.map_try_insert_with_ref(key, make_key, |k| Ok(make_val(k)), with_result)
+        self.map_try_insert_ref(key, make_key, |k| Ok(make_val(k)), with_result)
             .unwrap_infallible()
     }
 
-    pub fn map_try_insert_with<T, E>(
+    pub fn map_try_insert<T, E>(
         &self,
         key: K,
         make_val: impl FnOnce(&K) -> Result<V, E>,
         with_result: impl FnOnce(&K, &V) -> T,
     ) -> Result<T, E> {
-        self.get_or_try_insert_with(
+        self.get_or_try_insert(
             key,
             with_result,
             |with_result, k| {
@@ -194,7 +187,7 @@ where
         )
     }
 
-    pub fn map_try_insert_with_ref<Q, T, E>(
+    pub fn map_try_insert_ref<Q, T, E>(
         &self,
         key: &Q,
         make_key: impl FnOnce(&Q) -> K,
@@ -205,7 +198,7 @@ where
         Q: Eq + Hash + ?Sized,
         K: Borrow<Q>,
     {
-        self.get_or_try_insert_with_ref(
+        self.get_or_try_insert_ref(
             key,
             with_result,
             make_key,
@@ -218,7 +211,7 @@ where
         )
     }
 
-    pub fn get_or_try_insert_with<T, U, E>(
+    pub fn get_or_try_insert<T, U, E>(
         &self,
         key: K,
         data: T,
@@ -236,11 +229,11 @@ where
         // We must not borrow `self.map` here
         let (value, ret) = on_vacant(data, &key)?;
 
-        self.insert(hash, key, value);
+        self.raw_insert(hash, key, value);
         Ok(ret)
     }
 
-    pub fn get_or_try_insert_with_ref<Q, T, U, E>(
+    pub fn get_or_try_insert_ref<Q, T, U, E>(
         &self,
         key: &Q,
         data: T,
@@ -264,11 +257,11 @@ where
         let key = make_key(key);
         let (value, ret) = on_vacant(data, &key)?;
 
-        self.insert(hash, key, value);
+        self.raw_insert(hash, key, value);
         Ok(ret)
     }
 
-    fn insert(&self, hash: u64, key: K, value: V) {
+    fn raw_insert(&self, hash: u64, key: K, value: V) {
         let mut map = self.map.borrow_mut();
         match map.get_raw_entry_mut::<K>(hash, &key) {
             hash_map::RawEntryMut::Vacant(entry) => {
@@ -362,6 +355,6 @@ where
         K: Borrow<Q>,
     {
         self.map
-            .map_insert_with_ref(key, Q::to_owned, &self.init, with_result)
+            .map_insert_ref(key, Q::to_owned, &self.init, with_result)
     }
 }
