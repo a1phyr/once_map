@@ -6,7 +6,7 @@ extern crate alloc;
 pub mod sync;
 
 #[cfg(feature = "std")]
-pub use sync::OnceMap;
+pub use sync::{OnceMap, LazyMap};
 
 pub mod unsync;
 
@@ -71,5 +71,23 @@ where
         Self::Key: Borrow<Q>,
     {
         self.raw_entry_mut().from_key_hashed_nocheck(hash, key)
+    }
+}
+
+trait InfallibleResult {
+    type Ok;
+
+    fn unwrap_infallible(self) -> Self::Ok;
+}
+
+impl<T> InfallibleResult for Result<T, core::convert::Infallible> {
+    type Ok = T;
+
+    #[inline]
+    fn unwrap_infallible(self) -> T {
+        match self {
+            Ok(v) => v,
+            Err(void) => match void {},
+        }
     }
 }
