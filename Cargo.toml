@@ -1,6 +1,6 @@
 [package]
 name = "once_map"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2021"
 rust-version = "1.56"
 license = "MIT OR Apache-2.0"
@@ -18,7 +18,7 @@ default = ["std"]
 std = ["parking_lot", "stable_deref_trait/std"]
 
 [dependencies]
-hashbrown ="0.12"
+hashbrown = "0.12"
 stable_deref_trait = { version = "1.2", features = ["alloc"], default-features = false }
 
 parking_lot = { version = "0.12", optional = true }
