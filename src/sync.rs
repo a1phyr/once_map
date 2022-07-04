@@ -580,9 +580,9 @@ where
     }
 }
 
-impl<K, V> Default for OnceMap<K, V> {
+impl<K, V, S: Default + Clone> Default for OnceMap<K, V, S> {
     fn default() -> Self {
-        Self::new()
+        Self::with_hasher(S::default())
     }
 }
 
@@ -670,6 +670,12 @@ where
     {
         self.map
             .map_insert_ref(key, Q::to_owned, &self.init, with_result)
+    }
+}
+
+impl<K, V: Default, S: Default + Clone> Default for LazyMap<K, V, S> {
+    fn default() -> Self {
+        Self::with_hasher(S::default(), |_| V::default())
     }
 }
 
