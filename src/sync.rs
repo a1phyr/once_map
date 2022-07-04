@@ -338,14 +338,6 @@ where
         }
     }
 
-    pub fn len(&self) -> usize {
-        self.shards.iter().map(|s| s.map.read().len()).sum()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.shards.iter().all(|s| s.map.read().is_empty())
-    }
-
     pub fn clear(&mut self) {
         self.shards.iter_mut().for_each(|s| s.map.get_mut().clear());
     }
