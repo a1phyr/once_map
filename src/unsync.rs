@@ -366,6 +366,21 @@ impl<K, V: Default, S: Default + Clone> Default for LazyMap<K, V, S> {
     }
 }
 
+impl<K, V, S, F, Q> core::ops::Index<&Q> for LazyMap<K, V, S, F>
+where
+    K: Eq + Hash + Borrow<Q>,
+    S: BuildHasher,
+    F: Fn(&K) -> V,
+    V: StableDeref,
+    Q: Eq + Hash + ToOwned<Owned = K>,
+{
+    type Output = V::Target;
+
+    fn index(&self, key: &Q) -> &V::Target {
+        self.get(key)
+    }
+}
+
 impl<K, V, S> fmt::Debug for LazyMap<K, V, S>
 where
     K: fmt::Debug,

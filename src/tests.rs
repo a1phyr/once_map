@@ -1,4 +1,5 @@
 use crate::*;
+use core::cell::Cell;
 use std::{thread, time};
 
 #[test]
@@ -59,4 +60,18 @@ fn reentrant_init() {
     });
 
     assert_eq!(res, "xy");
+}
+
+#[test]
+fn lazy() {
+    let init_count = Cell::new(0);
+    let int_map = LazyMap::new(|n: &i32| {
+        init_count.set(init_count.get() + 1);
+        n.to_string()
+    });
+
+    assert_eq!(&int_map[&3], "3");
+    assert_eq!(&int_map[&12], "12");
+    assert_eq!(&int_map[&3], "3");
+    assert_eq!(init_count.get(), 2)
 }
