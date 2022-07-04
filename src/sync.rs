@@ -566,7 +566,10 @@ where
         shard.try_get(hash, key, data, on_occupied).or_else(
             #[cold]
             |(data, on_occupied)| {
-                shard.get_or_try_insert(hash, make_key(key), data, on_vacant, on_occupied)
+                let owned_key = make_key(key);
+                debug_assert_eq!(self.hash_one::<K>(&owned_key), hash);
+                debug_assert!(owned_key.borrow() == key);
+                shard.get_or_try_insert(hash, owned_key, data, on_vacant, on_occupied)
             },
         )
     }

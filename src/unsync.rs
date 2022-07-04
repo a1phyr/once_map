@@ -254,10 +254,11 @@ where
         drop(map);
 
         // We must not borrow `self.map` here
-        let key = make_key(key);
-        let (value, ret) = on_vacant(data, &key)?;
+        let owned_key = make_key(key);
+        debug_assert!(owned_key.borrow() == key);
+        let (value, ret) = on_vacant(data, &owned_key)?;
 
-        self.raw_insert(hash, key, value);
+        self.raw_insert(hash, owned_key, value);
         Ok(ret)
     }
 
