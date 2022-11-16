@@ -16,7 +16,9 @@ keywords = ["map", "once", "lazy"]
 
 [features]
 default = ["std", "ahash"]
-std = ["parking_lot", "stable_deref_trait/std", "ahash?/std", "ahash?/runtime-rng"]
+
+std = ["dep:parking_lot", "stable_deref_trait/std", "ahash?/std", "ahash?/runtime-rng"]
+ahash = ["dep:ahash", "hashbrown/ahash"]
 
 [dependencies]
 ahash = { version = "0.8", default-features = false, optional = true }
