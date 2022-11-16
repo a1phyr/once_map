@@ -305,19 +305,19 @@ where
     }
 }
 
-pub struct OnceMap<K, V, S = hash_map::DefaultHashBuilder> {
+pub struct OnceMap<K, V, S = crate::RandomState> {
     shards: Box<[Shard<K, V, S>]>,
     hash_builder: S,
 }
 
 impl<K, V> OnceMap<K, V> {
     pub fn new() -> Self {
-        Self::with_hasher(hash_map::DefaultHashBuilder::new())
+        Self::with_hasher(crate::RandomState::new())
     }
 
     #[cfg(test)]
     pub(crate) fn with_single_shard() -> Self {
-        let hash_builder = hash_map::DefaultHashBuilder::new();
+        let hash_builder = crate::RandomState::new();
         let shards = Box::new([Shard::new(hash_builder.clone())]);
         Self {
             shards,
@@ -597,14 +597,14 @@ where
     }
 }
 
-pub struct LazyMap<K, V, S = hash_map::DefaultHashBuilder, F = fn(&K) -> V> {
+pub struct LazyMap<K, V, S = crate::RandomState, F = fn(&K) -> V> {
     map: OnceMap<K, V, S>,
     init: F,
 }
 
-impl<K, V, F> LazyMap<K, V, hash_map::DefaultHashBuilder, F> {
+impl<K, V, F> LazyMap<K, V, crate::RandomState, F> {
     pub fn new(f: F) -> Self {
-        Self::with_hasher(hash_map::DefaultHashBuilder::new(), f)
+        Self::with_hasher(crate::RandomState::new(), f)
     }
 }
 

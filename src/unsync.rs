@@ -13,13 +13,13 @@ unsafe fn extend_lifetime<'a, T: StableDeref>(ptr: &T) -> &'a T::Target {
     &*(&**ptr as *const T::Target)
 }
 
-pub struct OnceMap<K, V, S = hash_map::DefaultHashBuilder> {
+pub struct OnceMap<K, V, S = crate::RandomState> {
     map: RefCell<HashMap<K, V, S>>,
 }
 
 impl<K, V> OnceMap<K, V> {
     pub fn new() -> Self {
-        Self::with_hasher(hash_map::DefaultHashBuilder::new())
+        Self::with_hasher(crate::RandomState::new())
     }
 }
 
@@ -289,14 +289,14 @@ where
     }
 }
 
-pub struct LazyMap<K, V, S = hash_map::DefaultHashBuilder, F = fn(&K) -> V> {
+pub struct LazyMap<K, V, S = crate::RandomState, F = fn(&K) -> V> {
     map: OnceMap<K, V, S>,
     init: F,
 }
 
-impl<K, V, F> LazyMap<K, V, hash_map::DefaultHashBuilder, F> {
+impl<K, V, F> LazyMap<K, V, crate::RandomState, F> {
     pub fn new(f: F) -> Self {
-        Self::with_hasher(hash_map::DefaultHashBuilder::new(), f)
+        Self::with_hasher(crate::RandomState::new(), f)
     }
 }
 
