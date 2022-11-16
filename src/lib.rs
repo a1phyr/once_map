@@ -101,7 +101,7 @@ use std::collections::hash_map::{DefaultHasher as HasherInner, RandomState as Ra
 #[cfg(all(not(feature = "ahash"), not(feature = "std")))]
 compile_error!("Either feature `ahash` or `std` must be enabled");
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct RandomState(RandomStateInner);
 
 #[derive(Debug, Clone, Default)]

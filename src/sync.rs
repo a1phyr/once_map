@@ -37,7 +37,7 @@ impl<T> Copy for ValidPtr<T> {}
 
 impl<T> Borrow<T> for ValidPtr<T> {
     fn borrow(&self) -> &T {
-        &**self
+        self
     }
 }
 
