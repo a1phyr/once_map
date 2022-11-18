@@ -37,7 +37,7 @@ jobs:
           override: true
 
       - name: cargo check
-        run: cargo check
+        run: cargo check --target aarch64-unknown-none --no-default-features --features ahash
 
   fmt:
     name: Check formatting

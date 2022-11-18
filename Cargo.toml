@@ -28,5 +28,4 @@ stable_deref_trait = { version = "1.2", features = ["alloc"], default-features =
 parking_lot = { version = "0.12", optional = true }
 
 [dev-dependencies]
-getrandom = { version = "0.2.8", default-features = false, features = ["custom"] }
 crossbeam-utils = "0.8.7"
