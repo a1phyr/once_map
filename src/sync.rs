@@ -139,6 +139,7 @@ impl<'a, K: Eq + Hash, S: BuildHasher> Drop for WaitersGuard<'a, K, S> {
     }
 }
 
+#[repr(align(64))]
 struct Shard<K, V, S> {
     map: RwLock<HashMap<K, V, S>>,
 
