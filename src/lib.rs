@@ -59,7 +59,7 @@ pub trait ToOwnedEquivalent<K>: Equivalent<K> {
 
 impl<Q> ToOwnedEquivalent<Q::Owned> for Q
 where
-    Q: ToOwned + Eq + ?Sized,
+    Q: alloc::borrow::ToOwned + Eq + ?Sized,
 {
     fn to_owned_equivalent(&self) -> Q::Owned {
         self.to_owned()
