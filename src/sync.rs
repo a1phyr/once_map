@@ -1,4 +1,4 @@
-use crate::{HashMapExt, InfallibleResult};
+use crate::{Equivalent, HashMapExt, InfallibleResult, ToOwnedEquivalent};
 use alloc::boxed::Box;
 use core::{
     borrow::Borrow,
@@ -165,8 +165,7 @@ where
 {
     fn get<Q, T>(&self, hash: u64, key: &Q, with_result: impl FnOnce(&K, &V) -> T) -> Option<T>
     where
-        Q: Eq + Hash + ?Sized,
-        K: Borrow<Q>,
+        Q: Hash + Equivalent<K> + ?Sized,
     {
         let this = self.map.read();
         let (k, v) = this.get_raw_entry(hash, key)?;
@@ -175,8 +174,7 @@ where
 
     fn try_get<Q, G, T, U>(&self, hash: u64, key: &Q, data: T, with_result: G) -> Result<U, (T, G)>
     where
-        Q: Eq + Hash + ?Sized,
-        K: Borrow<Q>,
+        Q: Hash + Equivalent<K> + ?Sized,
         G: FnOnce(T, &K, &V) -> U,
     {
         let this = self.map.read();
@@ -287,16 +285,14 @@ where
 
     pub fn contains_key<Q>(&self, hash: u64, key: &Q) -> bool
     where
-        Q: Eq + Hash + ?Sized,
-        K: Borrow<Q>,
+        Q: Hash + Equivalent<K> + ?Sized,
     {
         self.map.read().get_raw_entry(hash, key).is_some()
     }
 
     pub fn remove_entry<Q>(&mut self, hash: u64, key: &Q) -> Option<(K, V)>
     where
-        Q: Eq + Hash + ?Sized,
-        K: Borrow<Q>,
+        Q: Hash + Equivalent<K> + ?Sized,
     {
         match self.map.get_mut().get_raw_entry_mut(hash, key) {
             hash_map::RawEntryMut::Occupied(entry) => Some(entry.remove_entry()),
@@ -354,8 +350,7 @@ where
 {
     fn hash_one<Q>(&self, key: &Q) -> u64
     where
-        Q: Eq + Hash + ?Sized,
-        K: Borrow<Q>,
+        Q: Hash + Equivalent<K> + ?Sized,
     {
         crate::hash_one(&self.hash_builder, key)
     }
@@ -372,8 +367,7 @@ where
 
     pub fn contains_key<Q>(&self, key: &Q) -> bool
     where
-        Q: Eq + Hash + ?Sized,
-        K: Borrow<Q>,
+        Q: Hash + Equivalent<K> + ?Sized,
     {
         let hash = self.hash_one(key);
         self.get_shard(hash).contains_key(hash, key)
@@ -381,8 +375,7 @@ where
 
     pub fn remove<Q>(&mut self, key: &Q) -> Option<V>
     where
-        Q: Eq + Hash + ?Sized,
-        K: Borrow<Q>,
+        Q: Hash + Equivalent<K> + ?Sized,
     {
         let hash = self.hash_one(key);
         let (_, v) = self.get_shard_mut(hash).remove_entry(hash, key)?;
@@ -391,8 +384,7 @@ where
 
     pub fn remove_entry<Q>(&mut self, key: &Q) -> Option<(K, V)>
     where
-        Q: Eq + Hash + ?Sized,
-        K: Borrow<Q>,
+        Q: Hash + Equivalent<K> + ?Sized,
     {
         let hash = self.hash_one(key);
         self.get_shard_mut(hash).remove_entry(hash, key)
@@ -407,8 +399,7 @@ where
 {
     pub fn get<Q>(&self, key: &Q) -> Option<&V::Target>
     where
-        Q: Eq + Hash + ?Sized,
-        K: Borrow<Q>,
+        Q: Hash + Equivalent<K> + ?Sized,
     {
         self.map_get(key, |_, v| unsafe { extend_lifetime(v) })
     }
@@ -434,8 +425,7 @@ where
 {
     pub fn get_cloned<Q>(&self, key: &Q) -> Option<V>
     where
-        Q: Eq + Hash + ?Sized,
-        K: Borrow<Q>,
+        Q: Hash + Equivalent<K> + ?Sized,
     {
         self.map_get(key, |_, v| v.clone())
     }
@@ -460,8 +450,7 @@ where
 {
     pub fn map_get<Q, T>(&self, key: &Q, with_result: impl FnOnce(&K, &V) -> T) -> Option<T>
     where
-        Q: Eq + Hash + ?Sized,
-        K: Borrow<Q>,
+        Q: Hash + Equivalent<K> + ?Sized,
     {
         let hash = self.hash_one(key);
         self.get_shard(hash).get(hash, key, with_result)
@@ -485,8 +474,7 @@ where
         with_result: impl FnOnce(&K, &V) -> T,
     ) -> T
     where
-        Q: Eq + Hash + ?Sized,
-        K: Borrow<Q>,
+        Q: Hash + Equivalent<K> + ?Sized,
     {
         self.map_try_insert_ref(key, make_key, |k| Ok(make_val(k)), with_result)
             .unwrap_infallible()
@@ -518,8 +506,7 @@ where
         with_result: impl FnOnce(&K, &V) -> T,
     ) -> Result<T, E>
     where
-        Q: Eq + Hash + ?Sized,
-        K: Borrow<Q>,
+        Q: Hash + Equivalent<K> + ?Sized,
     {
         self.get_or_try_insert_ref(
             key,
@@ -555,8 +542,7 @@ where
         on_occupied: impl FnOnce(T, &K, &V) -> U,
     ) -> Result<U, E>
     where
-        Q: Eq + Hash + ?Sized,
-        K: Borrow<Q>,
+        Q: Hash + Equivalent<K> + ?Sized,
     {
         let hash = self.hash_one(key);
         let shard = self.get_shard(hash);
@@ -568,7 +554,7 @@ where
             |(data, on_occupied)| {
                 let owned_key = make_key(key);
                 debug_assert_eq!(self.hash_one::<K>(&owned_key), hash);
-                debug_assert!(owned_key.borrow() == key);
+                debug_assert!(key.equivalent(&owned_key));
                 shard.get_or_try_insert(hash, owned_key, data, on_vacant, on_occupied)
             },
         )
@@ -629,8 +615,7 @@ where
 {
     pub fn get<Q>(&self, key: &Q) -> &V::Target
     where
-        Q: Eq + Hash + ToOwned<Owned = K>,
-        K: Borrow<Q>,
+        Q: Hash + ToOwnedEquivalent<K> + ?Sized,
     {
         self.map_get(key, |_, v| unsafe { extend_lifetime(v) })
     }
@@ -645,8 +630,7 @@ where
 {
     pub fn get_cloned<Q>(&self, key: &Q) -> V
     where
-        Q: Eq + Hash + ToOwned<Owned = K>,
-        K: Borrow<Q>,
+        Q: Hash + ToOwnedEquivalent<K> + ?Sized,
     {
         self.map_get(key, |_, v| v.clone())
     }
@@ -660,21 +644,20 @@ where
 {
     pub fn map_get<Q, T>(&self, key: &Q, with_result: impl FnOnce(&K, &V) -> T) -> T
     where
-        Q: Eq + Hash + ToOwned<Owned = K>,
-        K: Borrow<Q>,
+        Q: Hash + ToOwnedEquivalent<K> + ?Sized,
     {
         self.map
-            .map_insert_ref(key, Q::to_owned, &self.init, with_result)
+            .map_insert_ref(key, Q::to_owned_equivalent, &self.init, with_result)
     }
 }
 
 impl<K, V, S, F, Q> core::ops::Index<&Q> for LazyMap<K, V, S, F>
 where
-    K: Eq + Hash + Borrow<Q>,
+    K: Eq + Hash,
     S: BuildHasher,
     F: Fn(&K) -> V,
     V: StableDeref,
-    Q: Eq + Hash + ToOwned<Owned = K>,
+    Q: Hash + ToOwnedEquivalent<K> + ?Sized,
 {
     type Output = V::Target;
 

@@ -18,6 +18,54 @@ use core::{
     hash::{BuildHasher, Hash, Hasher},
 };
 
+pub trait Equivalent<K: ?Sized> {
+    fn equivalent(&self, key: &K) -> bool;
+}
+
+impl<Q, K> Equivalent<K> for Q
+where
+    Q: Eq + ?Sized,
+    K: Borrow<Q> + ?Sized,
+{
+    fn equivalent(&self, key: &K) -> bool {
+        self == key.borrow()
+    }
+}
+
+#[repr(transparent)]
+#[derive(Hash)]
+struct EquivalentCompat<Q: ?Sized>(Q);
+
+impl<Q: ?Sized> EquivalentCompat<Q> {
+    #[inline]
+    fn new(q: &Q) -> &Self {
+        unsafe { &*(q as *const Q as *const Self) }
+    }
+}
+
+impl<Q, K> hashbrown::Equivalent<K> for EquivalentCompat<Q>
+where
+    Q: Equivalent<K> + ?Sized,
+{
+    #[inline]
+    fn equivalent(&self, key: &K) -> bool {
+        self.0.equivalent(key)
+    }
+}
+
+pub trait ToOwnedEquivalent<K>: Equivalent<K> {
+    fn to_owned_equivalent(&self) -> K;
+}
+
+impl<Q> ToOwnedEquivalent<Q::Owned> for Q
+where
+    Q: ToOwned + Eq + ?Sized,
+{
+    fn to_owned_equivalent(&self) -> Q::Owned {
+        self.to_owned()
+    }
+}
+
 fn hash_one<S: BuildHasher, Q: Hash + ?Sized>(hash_builder: &S, key: &Q) -> u64 {
     let mut hasher = hash_builder.build_hasher();
     key.hash(&mut hasher);
@@ -31,8 +79,7 @@ trait HashMapExt {
 
     fn get_raw_entry<Q>(&self, hash: u64, key: &Q) -> Option<(&Self::Key, &Self::Value)>
     where
-        Q: Eq + Hash + ?Sized,
-        Self::Key: Borrow<Q>;
+        Q: Hash + Equivalent<Self::Key> + ?Sized;
 
     fn get_raw_entry_mut<Q>(
         &mut self,
@@ -40,8 +87,7 @@ trait HashMapExt {
         key: &Q,
     ) -> hashbrown::hash_map::RawEntryMut<Self::Key, Self::Value, Self::Hasher>
     where
-        Q: Eq + Hash + ?Sized,
-        Self::Key: Borrow<Q>;
+        Q: Hash + Equivalent<Self::Key> + ?Sized;
 }
 
 impl<K, V, S> HashMapExt for hashbrown::HashMap<K, V, S>
@@ -55,10 +101,10 @@ where
 
     fn get_raw_entry<Q>(&self, hash: u64, key: &Q) -> Option<(&Self::Key, &Self::Value)>
     where
-        Q: Eq + Hash + ?Sized,
-        Self::Key: Borrow<Q>,
+        Q: Hash + Equivalent<Self::Key> + ?Sized,
     {
-        self.raw_entry().from_key_hashed_nocheck(hash, key)
+        self.raw_entry()
+            .from_key_hashed_nocheck(hash, EquivalentCompat::new(key))
     }
 
     fn get_raw_entry_mut<Q>(
@@ -67,10 +113,10 @@ where
         key: &Q,
     ) -> hashbrown::hash_map::RawEntryMut<Self::Key, Self::Value, Self::Hasher>
     where
-        Q: Eq + Hash + ?Sized,
-        Self::Key: Borrow<Q>,
+        Q: Hash + Equivalent<Self::Key> + ?Sized,
     {
-        self.raw_entry_mut().from_key_hashed_nocheck(hash, key)
+        self.raw_entry_mut()
+            .from_key_hashed_nocheck(hash, EquivalentCompat::new(key))
     }
 }
 

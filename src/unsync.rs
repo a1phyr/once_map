@@ -1,7 +1,5 @@
-use crate::{HashMapExt, InfallibleResult};
-use alloc::borrow::ToOwned;
+use crate::{Equivalent, EquivalentCompat, HashMapExt, InfallibleResult, ToOwnedEquivalent};
 use core::{
-    borrow::Borrow,
     cell::RefCell,
     fmt,
     hash::{BuildHasher, Hash},
@@ -52,26 +50,23 @@ where
 {
     pub fn contains_key<Q>(&self, key: &Q) -> bool
     where
-        Q: Eq + Hash + ?Sized,
-        K: Borrow<Q>,
+        Q: Hash + Equivalent<K> + ?Sized,
     {
-        self.map.borrow().contains_key(key)
+        self.map.borrow().contains_key(EquivalentCompat::new(key))
     }
 
     pub fn remove<Q>(&mut self, key: &Q) -> Option<V>
     where
-        Q: Eq + Hash + ?Sized,
-        K: Borrow<Q>,
+        Q: Hash + Equivalent<K> + ?Sized,
     {
-        self.map.get_mut().remove(key)
+        self.map.get_mut().remove(EquivalentCompat::new(key))
     }
 
     pub fn remove_entry<Q>(&mut self, key: &Q) -> Option<(K, V)>
     where
-        Q: Eq + Hash + ?Sized,
-        K: Borrow<Q>,
+        Q: Hash + Equivalent<K> + ?Sized,
     {
-        self.map.get_mut().remove_entry(key)
+        self.map.get_mut().remove_entry(EquivalentCompat::new(key))
     }
 }
 
@@ -83,8 +78,7 @@ where
 {
     pub fn get<Q>(&self, key: &Q) -> Option<&V::Target>
     where
-        Q: Eq + Hash + ?Sized,
-        K: Borrow<Q>,
+        Q: Hash + Equivalent<K> + ?Sized,
     {
         self.map_get(key, |_, v| unsafe { extend_lifetime(v) })
     }
@@ -110,8 +104,7 @@ where
 {
     pub fn get_cloned<Q>(&self, key: &Q) -> Option<V>
     where
-        Q: Eq + Hash + ?Sized,
-        K: Borrow<Q>,
+        Q: Hash + Equivalent<K> + ?Sized,
     {
         self.map_get(key, |_, v| v.clone())
     }
@@ -136,11 +129,10 @@ where
 {
     pub fn map_get<Q, T>(&self, key: &Q, with_result: impl FnOnce(&K, &V) -> T) -> Option<T>
     where
-        Q: Eq + Hash + ?Sized,
-        K: Borrow<Q>,
+        Q: Hash + Equivalent<K> + ?Sized,
     {
         let map = self.map.borrow();
-        let (key, value) = map.get_key_value(key)?;
+        let (key, value) = map.get_key_value(EquivalentCompat::new(key))?;
         Some(with_result(key, value))
     }
 
@@ -162,8 +154,7 @@ where
         with_result: impl FnOnce(&K, &V) -> T,
     ) -> T
     where
-        Q: Eq + Hash + ?Sized,
-        K: Borrow<Q>,
+        Q: Hash + Equivalent<K> + ?Sized,
     {
         self.map_try_insert_ref(key, make_key, |k| Ok(make_val(k)), with_result)
             .unwrap_infallible()
@@ -195,8 +186,7 @@ where
         with_result: impl FnOnce(&K, &V) -> T,
     ) -> Result<T, E>
     where
-        Q: Eq + Hash + ?Sized,
-        K: Borrow<Q>,
+        Q: Hash + Equivalent<K> + ?Sized,
     {
         self.get_or_try_insert_ref(
             key,
@@ -242,8 +232,7 @@ where
         on_occupied: impl FnOnce(T, &K, &V) -> U,
     ) -> Result<U, E>
     where
-        Q: Eq + Hash + ?Sized,
-        K: Borrow<Q>,
+        Q: Hash + Equivalent<K> + ?Sized,
     {
         let map = self.map.borrow();
         let hash = crate::hash_one(map.hasher(), key);
@@ -255,7 +244,7 @@ where
 
         // We must not borrow `self.map` here
         let owned_key = make_key(key);
-        debug_assert!(owned_key.borrow() == key);
+        debug_assert!(key.equivalent(&owned_key));
         let (value, ret) = on_vacant(data, &owned_key)?;
 
         self.raw_insert(hash, owned_key, value);
@@ -321,8 +310,7 @@ where
 {
     pub fn get<Q>(&self, key: &Q) -> &V::Target
     where
-        Q: Eq + Hash + ToOwned<Owned = K>,
-        K: Borrow<Q>,
+        Q: Hash + ToOwnedEquivalent<K> + ?Sized,
     {
         self.map_get(key, |_, v| unsafe { extend_lifetime(v) })
     }
@@ -337,8 +325,7 @@ where
 {
     pub fn get_cloned<Q>(&self, key: &Q) -> V
     where
-        Q: Eq + Hash + ToOwned<Owned = K>,
-        K: Borrow<Q>,
+        Q: Hash + ToOwnedEquivalent<K> + ?Sized,
     {
         self.map_get(key, |_, v| v.clone())
     }
@@ -352,11 +339,10 @@ where
 {
     pub fn map_get<Q, T>(&self, key: &Q, with_result: impl FnOnce(&K, &V) -> T) -> T
     where
-        Q: Eq + Hash + ToOwned<Owned = K>,
-        K: Borrow<Q>,
+        Q: Hash + ToOwnedEquivalent<K> + ?Sized,
     {
         self.map
-            .map_insert_ref(key, Q::to_owned, &self.init, with_result)
+            .map_insert_ref(key, Q::to_owned_equivalent, &self.init, with_result)
     }
 }
 
@@ -368,11 +354,11 @@ impl<K, V: Default, S: Default + Clone> Default for LazyMap<K, V, S> {
 
 impl<K, V, S, F, Q> core::ops::Index<&Q> for LazyMap<K, V, S, F>
 where
-    K: Eq + Hash + Borrow<Q>,
+    K: Eq + Hash,
     S: BuildHasher,
     F: Fn(&K) -> V,
     V: StableDeref,
-    Q: Eq + Hash + ToOwned<Owned = K>,
+    Q: Hash + ToOwnedEquivalent<K> + ?Sized,
 {
     type Output = V::Target;
 
