@@ -5,7 +5,7 @@ edition = "2021"
 rust-version = "1.61"
 license = "MIT OR Apache-2.0"
 readme = "README.md"
-description = "Single assignment maps"
+description = "Single assignment and lazy maps"
 
 repository = "https://github.com/a1phyr/once_map"
 documentation = "https://docs.rs/once_map"
