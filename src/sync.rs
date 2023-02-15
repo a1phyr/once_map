@@ -4,6 +4,7 @@ use core::{
     borrow::Borrow,
     fmt,
     hash::{BuildHasher, Hash, Hasher},
+    marker::PhantomData,
     ptr::NonNull,
 };
 use hashbrown::{hash_map, HashMap};
@@ -593,6 +594,7 @@ where
 #[derive(Debug)]
 pub struct ReadOnlyView<'a, K, V, S = crate::RandomState> {
     map: &'a OnceMap<K, V, S>,
+    _guard: PhantomData<parking_lot::MutexGuard<'a, OnceMap<K, V, S>>>,
 }
 
 impl<'a, K, V, S> ReadOnlyView<'a, K, V, S> {
@@ -605,7 +607,10 @@ impl<'a, K, V, S> ReadOnlyView<'a, K, V, S> {
             }
         }
 
-        Self { map }
+        Self {
+            map,
+            _guard: PhantomData,
+        }
     }
 
     #[inline]
