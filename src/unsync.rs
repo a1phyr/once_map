@@ -38,6 +38,10 @@ where
         self.map.borrow().is_empty()
     }
 
+    pub fn read_only_view(&self) -> ReadOnlyView<K, V, S> {
+        ReadOnlyView::new(self)
+    }
+
     pub fn clear(&mut self) {
         self.map.get_mut().clear();
     }
@@ -275,6 +279,66 @@ where
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.map.borrow().fmt(f)
+    }
+}
+
+#[derive(Debug)]
+pub struct ReadOnlyView<'a, K, V, S = crate::RandomState> {
+    map: core::cell::Ref<'a, HashMap<K, V, S>>,
+}
+
+impl<'a, K, V, S> ReadOnlyView<'a, K, V, S> {
+    fn new(map: &'a OnceMap<K, V, S>) -> Self {
+        Self {
+            map: map.map.borrow(),
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.map.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.map.is_empty()
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&K, &V)> {
+        self.map.iter()
+    }
+
+    pub fn keys(&self) -> impl Iterator<Item = &K> {
+        self.map.keys()
+    }
+
+    pub fn values(&self) -> impl Iterator<Item = &V> {
+        self.map.values()
+    }
+}
+
+impl<'a, K, V, S> ReadOnlyView<'a, K, V, S>
+where
+    K: Eq + Hash,
+    S: BuildHasher,
+{
+    pub fn get<Q>(&self, key: &Q) -> Option<&V>
+    where
+        Q: Hash + Equivalent<K> + ?Sized,
+    {
+        self.map.get(EquivalentCompat::new(key))
+    }
+
+    pub fn get_key_value<Q>(&self, key: &Q) -> Option<(&K, &V)>
+    where
+        Q: Hash + Equivalent<K> + ?Sized,
+    {
+        self.map.get_key_value(EquivalentCompat::new(key))
+    }
+
+    pub fn contains_key<Q>(&self, key: &Q) -> bool
+    where
+        Q: Hash + Equivalent<K> + ?Sized,
+    {
+        self.map.contains_key(EquivalentCompat::new(key))
     }
 }
 

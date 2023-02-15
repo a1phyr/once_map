@@ -334,13 +334,19 @@ where
             hash_builder,
         }
     }
+}
 
+impl<K, V, S> OnceMap<K, V, S> {
     pub fn clear(&mut self) {
         self.shards.iter_mut().for_each(|s| s.map.get_mut().clear());
     }
 
     pub fn hasher(&self) -> &S {
         &self.hash_builder
+    }
+
+    pub fn read_only_view(&self) -> ReadOnlyView<K, V, S> {
+        ReadOnlyView::new(self)
     }
 }
 
@@ -576,11 +582,103 @@ where
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut map = f.debug_map();
 
-        for shard in &*self.shards {
-            map.entries(&*shard.map.read());
+        for shard in self.read_only_view().iter_shards() {
+            map.entries(shard);
         }
 
         map.finish()
+    }
+}
+
+#[derive(Debug)]
+pub struct ReadOnlyView<'a, K, V, S = crate::RandomState> {
+    map: &'a OnceMap<K, V, S>,
+}
+
+impl<'a, K, V, S> ReadOnlyView<'a, K, V, S> {
+    fn new(map: &'a OnceMap<K, V, S>) -> Self {
+        use parking_lot::lock_api::RawRwLockRecursive;
+
+        for shard in map.shards.iter() {
+            unsafe {
+                shard.map.raw().lock_shared_recursive();
+            }
+        }
+
+        Self { map }
+    }
+
+    #[inline]
+    fn iter_shards(&self) -> impl ExactSizeIterator<Item = &HashMap<K, V, S>> {
+        self.map
+            .shards
+            .iter()
+            .map(|shard| unsafe { &*shard.map.data_ptr() })
+    }
+
+    pub fn len(&self) -> usize {
+        self.iter_shards().map(|s| s.len()).sum()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.iter_shards().all(|s| s.is_empty())
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&K, &V)> {
+        self.iter_shards().flat_map(|shard| shard.iter())
+    }
+
+    pub fn keys(&self) -> impl Iterator<Item = &K> {
+        self.iter_shards().flat_map(|shard| shard.keys())
+    }
+
+    pub fn values(&self) -> impl Iterator<Item = &V> {
+        self.iter_shards().flat_map(|shard| shard.values())
+    }
+}
+
+impl<'a, K, V, S> ReadOnlyView<'a, K, V, S>
+where
+    K: Eq + Hash,
+    S: BuildHasher,
+{
+    fn get_shard(&self, hash: u64) -> &HashMap<K, V, S> {
+        let len = self.map.shards.len();
+        let shard = &self.map.shards[(len - 1) & (hash as usize)];
+        unsafe { &*shard.map.data_ptr() }
+    }
+
+    pub fn get<Q>(&self, key: &Q) -> Option<&V>
+    where
+        Q: Hash + Equivalent<K> + ?Sized,
+    {
+        let hash = self.map.hash_one(key);
+        let (_, v) = self.get_shard(hash).get_raw_entry(hash, key)?;
+        Some(v)
+    }
+
+    pub fn get_key_value<Q>(&self, key: &Q) -> Option<(&K, &V)>
+    where
+        Q: Hash + Equivalent<K> + ?Sized,
+    {
+        let hash = self.map.hash_one(key);
+        self.get_shard(hash).get_raw_entry(hash, key)
+    }
+
+    pub fn contains_key<Q>(&self, key: &Q) -> bool
+    where
+        Q: Hash + Equivalent<K> + ?Sized,
+    {
+        let hash = self.map.hash_one(key);
+        self.get_shard(hash).get_raw_entry(hash, key).is_some()
+    }
+}
+
+impl<K, V, S> Drop for ReadOnlyView<'_, K, V, S> {
+    fn drop(&mut self) {
+        for shard in self.map.shards.iter() {
+            unsafe { shard.map.force_unlock_read() }
+        }
     }
 }
 
