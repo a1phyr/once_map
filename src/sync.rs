@@ -1,4 +1,4 @@
-use crate::{Equivalent, HashMapExt, InfallibleResult, ToOwnedEquivalent};
+use crate::{map, map::HashMap, Equivalent, InfallibleResult, ToOwnedEquivalent};
 use alloc::boxed::Box;
 use core::{
     borrow::Borrow,
@@ -7,7 +7,6 @@ use core::{
     marker::PhantomData,
     ptr::NonNull,
 };
-use hashbrown::{hash_map, HashMap};
 use parking_lot::{Condvar, Mutex, MutexGuard, RwLock};
 use stable_deref_trait::StableDeref;
 
@@ -120,57 +119,53 @@ impl Drop for BarrierGuard<'_> {
     }
 }
 
-type Waiters<K, S> = Mutex<HashMap<ValidPtr<K>, ValidPtr<WaitingBarrier>, S>>;
+type Waiters<K> = Mutex<HashMap<ValidPtr<K>, ValidPtr<WaitingBarrier>>>;
 
-struct WaitersGuard<'a, K: Eq + Hash, S: BuildHasher> {
-    waiters: &'a Waiters<K, S>,
+struct WaitersGuard<'a, K: Eq + Hash> {
+    waiters: &'a Waiters<K>,
     key: &'a K,
     hash: u64,
 }
 
-impl<'a, K: Eq + Hash, S: BuildHasher> Drop for WaitersGuard<'a, K, S> {
+impl<'a, K: Eq + Hash> Drop for WaitersGuard<'a, K> {
     fn drop(&mut self) {
         let mut writing = self.waiters.lock();
-        match writing.get_raw_entry_mut(self.hash, self.key) {
-            hash_map::RawEntryMut::Occupied(e) => {
+        match writing.entry(self.hash, self.key) {
+            map::Entry::Occupied(e) => {
                 e.remove();
             }
-            hash_map::RawEntryMut::Vacant(_) => (),
+            map::Entry::Vacant(_) => (),
         }
     }
 }
 
 #[repr(align(64))]
-struct Shard<K, V, S> {
-    map: RwLock<HashMap<K, V, S>>,
+struct Shard<K, V> {
+    map: RwLock<HashMap<K, V>>,
 
     // This lock should always be taken after `map`
-    waiters: Waiters<K, S>,
+    waiters: Waiters<K>,
 }
 
-impl<K, V, S> Shard<K, V, S>
-where
-    S: Clone,
-{
-    fn new(hash_builder: S) -> Self {
+impl<K, V> Shard<K, V> {
+    const fn new() -> Self {
         Self {
-            map: RwLock::new(HashMap::with_hasher(hash_builder.clone())),
-            waiters: Mutex::new(HashMap::with_hasher(hash_builder)),
+            map: RwLock::new(HashMap::new()),
+            waiters: Mutex::new(HashMap::new()),
         }
     }
 }
 
-impl<K, V, S> Shard<K, V, S>
+impl<K, V> Shard<K, V>
 where
     K: Hash + Eq,
-    S: BuildHasher,
 {
     fn get<Q, T>(&self, hash: u64, key: &Q, with_result: impl FnOnce(&K, &V) -> T) -> Option<T>
     where
         Q: Hash + Equivalent<K> + ?Sized,
     {
         let this = self.map.read();
-        let (k, v) = this.get_raw_entry(hash, key)?;
+        let (k, v) = this.get_key_value(hash, key)?;
         Some(with_result(k, v))
     }
 
@@ -180,7 +175,7 @@ where
         G: FnOnce(T, &K, &V) -> U,
     {
         let this = self.map.read();
-        match this.get_raw_entry(hash, key) {
+        match this.get_key_value(hash, key) {
             Some((k, v)) => Ok(with_result(data, k, v)),
             None => Err((data, with_result)),
         }
@@ -191,6 +186,7 @@ where
         hash: u64,
         key: K,
         data: T,
+        hasher: &impl BuildHasher,
         on_vacant: impl FnOnce(T, &K) -> Result<(V, U), E>,
         on_occupied: impl FnOnce(T, &K, &V) -> U,
     ) -> Result<U, E> {
@@ -199,7 +195,7 @@ where
         loop {
             // If a value already exists, we're done
             let map = self.map.read();
-            if let Some((key, value)) = map.get_raw_entry(hash, &key) {
+            if let Some((key, value)) = map.get_key_value(hash, &key) {
                 return Ok(on_occupied(data, key, value));
             }
 
@@ -208,8 +204,8 @@ where
 
             drop(map);
 
-            match writing.get_raw_entry_mut(hash, &key) {
-                hash_map::RawEntryMut::Occupied(entry) => {
+            match writing.entry(hash, &key) {
+                map::Entry::Occupied(entry) => {
                     // Somebody is already writing this value ! Wait until it
                     // is done, then start again.
 
@@ -225,12 +221,12 @@ where
                     waiter.wait();
                     continue;
                 }
-                hash_map::RawEntryMut::Vacant(entry) => {
+                map::Entry::Vacant(entry) => {
                     // We're the first ! Register our barrier so other can wait
                     // on it.
                     let key_ref = ValidPtr(NonNull::from(&key));
                     let barrier_ref = ValidPtr(NonNull::from(&barrier));
-                    entry.insert_hashed_nocheck(hash, key_ref, barrier_ref);
+                    entry.insert(key_ref, barrier_ref, hasher);
                     break;
                 }
             }
@@ -262,23 +258,23 @@ where
         // Note that the mutex guard will stay alive until the end of the
         // function, which is intentional.
         let mut writing = self.waiters.lock();
-        match writing.get_raw_entry_mut(hash, &key) {
-            hash_map::RawEntryMut::Occupied(e) => {
+        match writing.entry(hash, &key) {
+            map::Entry::Occupied(e) => {
                 let b = e.remove();
                 debug_assert!(core::ptr::eq(b.0.as_ptr(), &barrier));
             }
-            hash_map::RawEntryMut::Vacant(_) => debug_assert!(false),
+            map::Entry::Vacant(_) => debug_assert!(false),
         }
 
         // We have just done the cleanup manually
         core::mem::forget(guard);
 
         // We can finally insert the value in the map.
-        match map.get_raw_entry_mut(hash, &key) {
-            hash_map::RawEntryMut::Vacant(entry) => {
-                entry.insert_hashed_nocheck(hash, key, value);
+        match map.entry(hash, &key) {
+            map::Entry::Vacant(entry) => {
+                entry.insert(key, value, hasher);
             }
-            hash_map::RawEntryMut::Occupied(_) => panic!("re-entrant init"),
+            map::Entry::Occupied(_) => panic!("re-entrant init"),
         }
         Ok(ret)
 
@@ -289,22 +285,22 @@ where
     where
         Q: Hash + Equivalent<K> + ?Sized,
     {
-        self.map.read().get_raw_entry(hash, key).is_some()
+        self.map.read().contains_key(hash, key)
     }
 
     pub fn remove_entry<Q>(&mut self, hash: u64, key: &Q) -> Option<(K, V)>
     where
         Q: Hash + Equivalent<K> + ?Sized,
     {
-        match self.map.get_mut().get_raw_entry_mut(hash, key) {
-            hash_map::RawEntryMut::Occupied(entry) => Some(entry.remove_entry()),
-            hash_map::RawEntryMut::Vacant(_) => None,
+        match self.map.get_mut().entry(hash, key) {
+            map::Entry::Occupied(entry) => Some(entry.remove_entry()),
+            map::Entry::Vacant(_) => None,
         }
     }
 }
 
 pub struct OnceMap<K, V, S = crate::RandomState> {
-    shards: Box<[Shard<K, V, S>]>,
+    shards: Box<[Shard<K, V>]>,
     hash_builder: S,
 }
 
@@ -316,7 +312,7 @@ impl<K, V> OnceMap<K, V> {
     #[cfg(test)]
     pub(crate) fn with_single_shard() -> Self {
         let hash_builder = crate::RandomState::new();
-        let shards = Box::new([Shard::new(hash_builder.clone())]);
+        let shards = Box::new([Shard::new()]);
         Self {
             shards,
             hash_builder,
@@ -324,12 +320,9 @@ impl<K, V> OnceMap<K, V> {
     }
 }
 
-impl<K, V, S> OnceMap<K, V, S>
-where
-    S: Clone,
-{
+impl<K, V, S> OnceMap<K, V, S> {
     pub fn with_hasher(hash_builder: S) -> Self {
-        let shards = (0..32).map(|_| Shard::new(hash_builder.clone())).collect();
+        let shards = (0..32).map(|_| Shard::new()).collect();
         Self {
             shards,
             hash_builder,
@@ -363,12 +356,12 @@ where
         crate::hash_one(&self.hash_builder, key)
     }
 
-    fn get_shard(&self, hash: u64) -> &Shard<K, V, S> {
+    fn get_shard(&self, hash: u64) -> &Shard<K, V> {
         let len = self.shards.len();
         &self.shards[(len - 1) & (hash as usize)]
     }
 
-    fn get_shard_mut(&mut self, hash: u64) -> &mut Shard<K, V, S> {
+    fn get_shard_mut(&mut self, hash: u64) -> &mut Shard<K, V> {
         let len = self.shards.len();
         &mut self.shards[(len - 1) & (hash as usize)]
     }
@@ -537,8 +530,14 @@ where
         on_occupied: impl FnOnce(T, &K, &V) -> U,
     ) -> Result<U, E> {
         let hash = self.hash_one(&key);
-        self.get_shard(hash)
-            .get_or_try_insert(hash, key, data, on_vacant, on_occupied)
+        self.get_shard(hash).get_or_try_insert(
+            hash,
+            key,
+            data,
+            &self.hash_builder,
+            on_vacant,
+            on_occupied,
+        )
     }
 
     pub fn get_or_try_insert_ref<Q, T, U, E>(
@@ -563,7 +562,14 @@ where
                 let owned_key = make_key(key);
                 debug_assert_eq!(self.hash_one::<K>(&owned_key), hash);
                 debug_assert!(key.equivalent(&owned_key));
-                shard.get_or_try_insert(hash, owned_key, data, on_vacant, on_occupied)
+                shard.get_or_try_insert(
+                    hash,
+                    owned_key,
+                    data,
+                    &self.hash_builder,
+                    on_vacant,
+                    on_occupied,
+                )
             },
         )
     }
@@ -614,7 +620,7 @@ impl<'a, K, V, S> ReadOnlyView<'a, K, V, S> {
     }
 
     #[inline]
-    fn iter_shards(&self) -> impl ExactSizeIterator<Item = &HashMap<K, V, S>> {
+    fn iter_shards(&self) -> impl ExactSizeIterator<Item = &HashMap<K, V>> {
         self.map
             .shards
             .iter()
@@ -647,7 +653,7 @@ where
     K: Eq + Hash,
     S: BuildHasher,
 {
-    fn get_shard(&self, hash: u64) -> &HashMap<K, V, S> {
+    fn get_shard(&self, hash: u64) -> &HashMap<K, V> {
         let len = self.map.shards.len();
         let shard = &self.map.shards[(len - 1) & (hash as usize)];
         unsafe { &*shard.map.data_ptr() }
@@ -658,8 +664,7 @@ where
         Q: Hash + Equivalent<K> + ?Sized,
     {
         let hash = self.map.hash_one(key);
-        let (_, v) = self.get_shard(hash).get_raw_entry(hash, key)?;
-        Some(v)
+        self.get_shard(hash).get(hash, key)
     }
 
     pub fn get_key_value<Q>(&self, key: &Q) -> Option<(&K, &V)>
@@ -667,7 +672,7 @@ where
         Q: Hash + Equivalent<K> + ?Sized,
     {
         let hash = self.map.hash_one(key);
-        self.get_shard(hash).get_raw_entry(hash, key)
+        self.get_shard(hash).get_key_value(hash, key)
     }
 
     pub fn contains_key<Q>(&self, key: &Q) -> bool
@@ -675,7 +680,7 @@ where
         Q: Hash + Equivalent<K> + ?Sized,
     {
         let hash = self.map.hash_one(key);
-        self.get_shard(hash).get_raw_entry(hash, key).is_some()
+        self.get_shard(hash).contains_key(hash, key)
     }
 }
 
@@ -698,10 +703,7 @@ impl<K, V, F> LazyMap<K, V, crate::RandomState, F> {
     }
 }
 
-impl<K, V, S, F> LazyMap<K, V, S, F>
-where
-    S: Clone,
-{
+impl<K, V, S, F> LazyMap<K, V, S, F> {
     pub fn with_hasher(hash_builder: S, f: F) -> Self {
         Self {
             map: OnceMap::with_hasher(hash_builder),

@@ -1,10 +1,9 @@
-use crate::{Equivalent, EquivalentCompat, HashMapExt, InfallibleResult, ToOwnedEquivalent};
+use crate::{map, map::HashMap, Equivalent, InfallibleResult, ToOwnedEquivalent};
 use core::{
     cell::RefCell,
     fmt,
     hash::{BuildHasher, Hash},
 };
-use hashbrown::{hash_map, HashMap};
 use stable_deref_trait::StableDeref;
 
 unsafe fn extend_lifetime<'a, T: StableDeref>(ptr: &T) -> &'a T::Target {
@@ -12,7 +11,8 @@ unsafe fn extend_lifetime<'a, T: StableDeref>(ptr: &T) -> &'a T::Target {
 }
 
 pub struct OnceMap<K, V, S = crate::RandomState> {
-    map: RefCell<HashMap<K, V, S>>,
+    map: RefCell<HashMap<K, V>>,
+    hash_builder: S,
 }
 
 impl<K, V> OnceMap<K, V> {
@@ -21,13 +21,10 @@ impl<K, V> OnceMap<K, V> {
     }
 }
 
-impl<K, V, S> OnceMap<K, V, S>
-where
-    S: Clone,
-{
+impl<K, V, S> OnceMap<K, V, S> {
     pub fn with_hasher(hash_builder: S) -> Self {
-        let map = RefCell::new(HashMap::with_hasher(hash_builder));
-        Self { map }
+        let map = RefCell::new(HashMap::new());
+        Self { map, hash_builder }
     }
 
     pub fn len(&self) -> usize {
@@ -52,25 +49,35 @@ where
     K: Eq + Hash,
     S: BuildHasher,
 {
+    fn hash_one<Q>(&self, key: &Q) -> u64
+    where
+        Q: Hash + Equivalent<K> + ?Sized,
+    {
+        crate::hash_one(&self.hash_builder, key)
+    }
+
     pub fn contains_key<Q>(&self, key: &Q) -> bool
     where
         Q: Hash + Equivalent<K> + ?Sized,
     {
-        self.map.borrow().contains_key(EquivalentCompat::new(key))
+        let hash = self.hash_one(key);
+        self.map.borrow().contains_key(hash, key)
     }
 
     pub fn remove<Q>(&mut self, key: &Q) -> Option<V>
     where
         Q: Hash + Equivalent<K> + ?Sized,
     {
-        self.map.get_mut().remove(EquivalentCompat::new(key))
+        let hash = self.hash_one(key);
+        self.map.get_mut().remove(hash, key)
     }
 
     pub fn remove_entry<Q>(&mut self, key: &Q) -> Option<(K, V)>
     where
         Q: Hash + Equivalent<K> + ?Sized,
     {
-        self.map.get_mut().remove_entry(EquivalentCompat::new(key))
+        let hash = self.hash_one(key);
+        self.map.get_mut().remove_entry(hash, key)
     }
 }
 
@@ -136,7 +143,8 @@ where
         Q: Hash + Equivalent<K> + ?Sized,
     {
         let map = self.map.borrow();
-        let (key, value) = map.get_key_value(EquivalentCompat::new(key))?;
+        let hash = self.hash_one(key);
+        let (key, value) = map.get_key_value(hash, key)?;
         Some(with_result(key, value))
     }
 
@@ -213,9 +221,9 @@ where
         on_occupied: impl FnOnce(T, &K, &V) -> U,
     ) -> Result<U, E> {
         let map = self.map.borrow();
-        let hash = crate::hash_one(map.hasher(), &key);
+        let hash = self.hash_one(&key);
 
-        if let Some((key, value)) = map.get_raw_entry(hash, &key) {
+        if let Some((key, value)) = map.get_key_value(hash, &key) {
             return Ok(on_occupied(data, key, value));
         }
         drop(map);
@@ -239,9 +247,9 @@ where
         Q: Hash + Equivalent<K> + ?Sized,
     {
         let map = self.map.borrow();
-        let hash = crate::hash_one(map.hasher(), key);
+        let hash = self.hash_one(key);
 
-        if let Some((key, value)) = map.get_raw_entry(hash, key) {
+        if let Some((key, value)) = map.get_key_value(hash, key) {
             return Ok(on_occupied(data, key, value));
         }
         drop(map);
@@ -257,11 +265,11 @@ where
 
     fn raw_insert(&self, hash: u64, key: K, value: V) {
         let mut map = self.map.borrow_mut();
-        match map.get_raw_entry_mut::<K>(hash, &key) {
-            hash_map::RawEntryMut::Vacant(entry) => {
-                entry.insert_hashed_nocheck(hash, key, value);
+        match map.entry(hash, &key) {
+            map::Entry::Vacant(entry) => {
+                entry.insert(key, value, &self.hash_builder);
             }
-            hash_map::RawEntryMut::Occupied(_) => panic!("re-entrant init"),
+            map::Entry::Occupied(_) => panic!("re-entrant init"),
         }
     }
 }
@@ -282,15 +290,16 @@ where
     }
 }
 
-#[derive(Debug)]
 pub struct ReadOnlyView<'a, K, V, S = crate::RandomState> {
-    map: core::cell::Ref<'a, HashMap<K, V, S>>,
+    map: core::cell::Ref<'a, HashMap<K, V>>,
+    hash_builder: &'a S,
 }
 
 impl<'a, K, V, S> ReadOnlyView<'a, K, V, S> {
     fn new(map: &'a OnceMap<K, V, S>) -> Self {
         Self {
             map: map.map.borrow(),
+            hash_builder: &map.hash_builder,
         }
     }
 
@@ -320,25 +329,47 @@ where
     K: Eq + Hash,
     S: BuildHasher,
 {
+    fn hash_one<Q>(&self, key: &Q) -> u64
+    where
+        Q: Hash + Equivalent<K> + ?Sized,
+    {
+        crate::hash_one(self.hash_builder, key)
+    }
+
     pub fn get<Q>(&self, key: &Q) -> Option<&V>
     where
         Q: Hash + Equivalent<K> + ?Sized,
     {
-        self.map.get(EquivalentCompat::new(key))
+        let hash = self.hash_one(key);
+        self.map.get(hash, key)
     }
 
     pub fn get_key_value<Q>(&self, key: &Q) -> Option<(&K, &V)>
     where
         Q: Hash + Equivalent<K> + ?Sized,
     {
-        self.map.get_key_value(EquivalentCompat::new(key))
+        let hash = self.hash_one(key);
+        self.map.get_key_value(hash, key)
     }
 
     pub fn contains_key<Q>(&self, key: &Q) -> bool
     where
         Q: Hash + Equivalent<K> + ?Sized,
     {
-        self.map.contains_key(EquivalentCompat::new(key))
+        let hash = self.hash_one(key);
+        self.map.contains_key(hash, key)
+    }
+}
+
+impl<'a, K, V, S> fmt::Debug for ReadOnlyView<'a, K, V, S>
+where
+    K: fmt::Debug,
+    V: fmt::Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ReadOnlyView")
+            .field("map", &self.map)
+            .finish()
     }
 }
 
@@ -353,10 +384,7 @@ impl<K, V, F> LazyMap<K, V, crate::RandomState, F> {
     }
 }
 
-impl<K, V, S, F> LazyMap<K, V, S, F>
-where
-    S: Clone,
-{
+impl<K, V, S, F> LazyMap<K, V, S, F> {
     pub fn with_hasher(hash_builder: S, f: F) -> Self {
         Self {
             map: OnceMap::with_hasher(hash_builder),

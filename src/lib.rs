@@ -10,6 +10,8 @@ pub use sync::{LazyMap, OnceMap};
 
 pub mod unsync;
 
+mod map;
+
 #[cfg(test)]
 mod tests;
 
@@ -32,27 +34,6 @@ where
     }
 }
 
-#[repr(transparent)]
-#[derive(Hash)]
-struct EquivalentCompat<Q: ?Sized>(Q);
-
-impl<Q: ?Sized> EquivalentCompat<Q> {
-    #[inline]
-    fn new(q: &Q) -> &Self {
-        unsafe { &*(q as *const Q as *const Self) }
-    }
-}
-
-impl<Q, K> hashbrown::Equivalent<K> for EquivalentCompat<Q>
-where
-    Q: Equivalent<K> + ?Sized,
-{
-    #[inline]
-    fn equivalent(&self, key: &K) -> bool {
-        self.0.equivalent(key)
-    }
-}
-
 pub trait ToOwnedEquivalent<K>: Equivalent<K> {
     fn to_owned_equivalent(&self) -> K;
 }
@@ -70,54 +51,6 @@ fn hash_one<S: BuildHasher, Q: Hash + ?Sized>(hash_builder: &S, key: &Q) -> u64 
     let mut hasher = hash_builder.build_hasher();
     key.hash(&mut hasher);
     hasher.finish()
-}
-
-trait HashMapExt {
-    type Key;
-    type Value;
-    type Hasher;
-
-    fn get_raw_entry<Q>(&self, hash: u64, key: &Q) -> Option<(&Self::Key, &Self::Value)>
-    where
-        Q: Hash + Equivalent<Self::Key> + ?Sized;
-
-    fn get_raw_entry_mut<Q>(
-        &mut self,
-        hash: u64,
-        key: &Q,
-    ) -> hashbrown::hash_map::RawEntryMut<Self::Key, Self::Value, Self::Hasher>
-    where
-        Q: Hash + Equivalent<Self::Key> + ?Sized;
-}
-
-impl<K, V, S> HashMapExt for hashbrown::HashMap<K, V, S>
-where
-    K: Hash + Eq,
-    S: BuildHasher,
-{
-    type Key = K;
-    type Value = V;
-    type Hasher = S;
-
-    fn get_raw_entry<Q>(&self, hash: u64, key: &Q) -> Option<(&Self::Key, &Self::Value)>
-    where
-        Q: Hash + Equivalent<Self::Key> + ?Sized,
-    {
-        self.raw_entry()
-            .from_key_hashed_nocheck(hash, EquivalentCompat::new(key))
-    }
-
-    fn get_raw_entry_mut<Q>(
-        &mut self,
-        hash: u64,
-        key: &Q,
-    ) -> hashbrown::hash_map::RawEntryMut<Self::Key, Self::Value, Self::Hasher>
-    where
-        Q: Hash + Equivalent<Self::Key> + ?Sized,
-    {
-        self.raw_entry_mut()
-            .from_key_hashed_nocheck(hash, EquivalentCompat::new(key))
-    }
 }
 
 trait InfallibleResult {
