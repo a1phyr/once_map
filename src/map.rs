@@ -65,6 +65,7 @@ where
     K: Eq + Hash,
 {
     #[inline]
+    #[allow(clippy::manual_map)]
     pub fn get<Q>(&self, hash: u64, k: &Q) -> Option<&V>
     where
         Q: Hash + Equivalent<K> + ?Sized,
@@ -76,6 +77,7 @@ where
     }
 
     #[inline]
+    #[allow(clippy::manual_map)]
     pub fn get_key_value<Q>(&self, hash: u64, k: &Q) -> Option<(&K, &V)>
     where
         Q: Hash + Equivalent<K> + ?Sized,
@@ -106,6 +108,7 @@ where
     }
 
     #[inline]
+    #[allow(clippy::manual_map)]
     pub fn remove<Q>(&mut self, hash: u64, k: &Q) -> Option<V>
     where
         Q: Hash + Equivalent<K> + ?Sized,
