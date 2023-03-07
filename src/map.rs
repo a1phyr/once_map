@@ -188,7 +188,7 @@ where
     #[inline]
     pub fn insert<S>(self, key: K, value: V, hasher: &S) -> &'a mut (K, V)
     where
-        S: std::hash::BuildHasher,
+        S: core::hash::BuildHasher,
     {
         let hash_one = |(k, _): &(K, V)| crate::hash_one(hasher, k);
         self.map.0.insert_entry(self.hash, (key, value), hash_one)
