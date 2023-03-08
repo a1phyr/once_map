@@ -586,13 +586,7 @@ where
     V: fmt::Debug,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut map = f.debug_map();
-
-        for shard in self.read_only_view().iter_shards() {
-            map.entries(shard);
-        }
-
-        map.finish()
+        f.debug_map().entries(self.read_only_view().iter()).finish()
     }
 }
 
@@ -607,10 +601,10 @@ impl<K, V> LockedShard<K, V> {
     }
 }
 
-// #[derive(Debug)]
 pub struct ReadOnlyView<'a, K, V, S = crate::RandomState> {
     shards: &'a [LockedShard<K, V>],
     hasher: &'a S,
+    _marker: crate::PhantomUnsend,
 }
 
 impl<'a, K, V, S> ReadOnlyView<'a, K, V, S> {
@@ -628,6 +622,7 @@ impl<'a, K, V, S> ReadOnlyView<'a, K, V, S> {
         Self {
             shards,
             hasher: &map.hash_builder,
+            _marker: crate::PhantomUnsend(std::marker::PhantomData),
         }
     }
 
@@ -706,6 +701,16 @@ impl<K, V, S> Drop for ReadOnlyView<'_, K, V, S> {
         for shard in self.shards.iter() {
             unsafe { shard.0.map.force_unlock_read() }
         }
+    }
+}
+
+impl<K, V, S> fmt::Debug for ReadOnlyView<'_, K, V, S>
+where
+    K: fmt::Debug,
+    V: fmt::Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_map().entries(self.iter()).finish()
     }
 }
 

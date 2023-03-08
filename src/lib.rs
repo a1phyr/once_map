@@ -150,3 +150,10 @@ impl core::hash::Hasher for DefaultHasher {
         self.0.write_usize(i)
     }
 }
+
+/// ```compile_fail
+/// fn assert_send<T: Send>() {}
+/// assert_send::<once_map::sync::ReadOnlyView<(), (), once_map::RandomState>>();
+/// ```
+struct PhantomUnsend(core::marker::PhantomData<*const ()>);
+unsafe impl Sync for PhantomUnsend {}
