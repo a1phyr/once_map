@@ -265,9 +265,9 @@ where
 
     fn raw_insert(&self, hash: u64, key: K, value: V) {
         let mut map = self.map.borrow_mut();
-        match map.entry(hash, &key) {
+        match map.entry(hash, &key, &self.hash_builder) {
             map::Entry::Vacant(entry) => {
-                entry.insert(key, value, &self.hash_builder);
+                entry.insert(key, value);
             }
             map::Entry::Occupied(_) => panic!("re-entrant init"),
         }

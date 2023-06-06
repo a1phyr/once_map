@@ -129,12 +129,7 @@ struct WaitersGuard<'a, K: Eq + Hash> {
 impl<'a, K: Eq + Hash> Drop for WaitersGuard<'a, K> {
     fn drop(&mut self) {
         let mut writing = self.waiters.lock();
-        match writing.entry(self.hash, self.key) {
-            map::Entry::Occupied(e) => {
-                e.remove();
-            }
-            map::Entry::Vacant(_) => (),
-        }
+        writing.remove(self.hash, self.key);
     }
 }
 
@@ -203,7 +198,7 @@ where
 
             drop(map);
 
-            match writing.entry(hash, &key) {
+            match writing.entry(hash, &key, hasher) {
                 map::Entry::Occupied(entry) => {
                     // Somebody is already writing this value ! Wait until it
                     // is done, then start again.
@@ -225,7 +220,7 @@ where
                     // on it.
                     let key_ref = ValidPtr(NonNull::from(&key));
                     let barrier_ref = ValidPtr(NonNull::from(&barrier));
-                    entry.insert(key_ref, barrier_ref, hasher);
+                    entry.insert(key_ref, barrier_ref);
                     break;
                 }
             }
@@ -257,21 +252,19 @@ where
         // Note that the mutex guard will stay alive until the end of the
         // function, which is intentional.
         let mut writing = self.waiters.lock();
-        match writing.entry(hash, &key) {
-            map::Entry::Occupied(e) => {
-                let b = e.remove();
-                debug_assert!(core::ptr::eq(b.0.as_ptr(), &barrier));
-            }
-            map::Entry::Vacant(_) => debug_assert!(false),
+
+        match writing.remove(hash, &key) {
+            Some(b) => debug_assert!(core::ptr::eq(b.0.as_ptr(), &barrier)),
+            None => debug_assert!(false),
         }
 
         // We have just done the cleanup manually
         core::mem::forget(guard);
 
         // We can finally insert the value in the map.
-        match map.entry(hash, &key) {
+        match map.entry(hash, &key, hasher) {
             map::Entry::Vacant(entry) => {
-                entry.insert(key, value, hasher);
+                entry.insert(key, value);
             }
             map::Entry::Occupied(_) => panic!("re-entrant init"),
         }
@@ -291,10 +284,7 @@ where
     where
         Q: Hash + Equivalent<K> + ?Sized,
     {
-        match self.map.get_mut().entry(hash, key) {
-            map::Entry::Occupied(entry) => Some(entry.remove_entry()),
-            map::Entry::Vacant(_) => None,
-        }
+        self.map.get_mut().remove_entry(hash, key)
     }
 }
 

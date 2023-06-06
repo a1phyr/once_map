@@ -97,13 +97,22 @@ where
     }
 
     #[inline]
-    pub fn entry<Q>(&mut self, hash: u64, k: &Q) -> Entry<K, V>
+    pub fn entry<Q, S>(&mut self, hash: u64, k: &Q, hasher: &S) -> Entry<K, V>
     where
         Q: Hash + Equivalent<K> + ?Sized,
+        S: core::hash::BuildHasher,
     {
-        match self.0.find(hash, equivalent(k)) {
-            Some(bucket) => Entry::Occupied(OccupiedEntry { map: self, bucket }),
-            None => Entry::Vacant(VacantEntry { map: self, hash }),
+        let hash_one = |(k, _): &(K, V)| crate::hash_one(hasher, k);
+        match self
+            .0
+            .find_or_find_insert_slot(hash, equivalent(k), hash_one)
+        {
+            Ok(bucket) => Entry::Occupied(OccupiedEntry { map: self, bucket }),
+            Err(slot) => Entry::Vacant(VacantEntry {
+                map: self,
+                hash,
+                slot,
+            }),
         }
     }
 
@@ -166,19 +175,20 @@ impl<'a, K, V> OccupiedEntry<'a, K, V> {
 
     #[inline]
     pub fn remove(self) -> V {
-        unsafe { self.map.0.remove(self.bucket).1 }
+        unsafe { self.map.0.remove(self.bucket).0 .1 }
     }
 
     #[inline]
 
     pub fn remove_entry(self) -> (K, V) {
-        unsafe { self.map.0.remove(self.bucket) }
+        unsafe { self.map.0.remove(self.bucket).0 }
     }
 }
 
 pub struct VacantEntry<'a, K, V> {
     map: &'a mut HashMap<K, V>,
     hash: u64,
+    slot: hashbrown::raw::InsertSlot,
 }
 
 impl<'a, K, V> VacantEntry<'a, K, V>
@@ -186,12 +196,13 @@ where
     K: Hash,
 {
     #[inline]
-    pub fn insert<S>(self, key: K, value: V, hasher: &S) -> &'a mut (K, V)
-    where
-        S: core::hash::BuildHasher,
-    {
-        let hash_one = |(k, _): &(K, V)| crate::hash_one(hasher, k);
-        self.map.0.insert_entry(self.hash, (key, value), hash_one)
+    pub fn insert(self, key: K, value: V) -> &'a mut (K, V) {
+        unsafe {
+            self.map
+                .0
+                .insert_in_slot(self.hash, self.slot, (key, value))
+                .as_mut()
+        }
     }
 }
 
