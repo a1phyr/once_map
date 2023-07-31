@@ -274,7 +274,7 @@ where
     }
 }
 
-impl<K, V, S: Default + Clone> Default for OnceMap<K, V, S> {
+impl<K, V, S: Default> Default for OnceMap<K, V, S> {
     fn default() -> Self {
         Self::with_hasher(S::default())
     }
@@ -438,7 +438,7 @@ where
     }
 }
 
-impl<K, V: Default, S: Default + Clone> Default for LazyMap<K, V, S> {
+impl<K, V: Default, S: Default> Default for LazyMap<K, V, S> {
     fn default() -> Self {
         Self::with_hasher(S::default(), |_| V::default())
     }
