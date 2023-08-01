@@ -10,7 +10,7 @@ description = "Single assignment and lazy maps"
 repository = "https://github.com/a1phyr/once_map"
 documentation = "https://docs.rs/once_map"
 
-categories = ["caching", "data-structures", "rust-patterns", "no-std"]
+categories = ["caching", "concurrency", "data-structures", "rust-patterns", "no-std"]
 keywords = ["map", "once", "lazy"]
 
 
