@@ -46,6 +46,10 @@ impl<K, V, S> OnceMap<K, V, S> {
     pub fn iter_mut(&mut self) -> impl Iterator<Item = (&K, &mut V)> {
         self.map.get_mut().iter_mut()
     }
+
+    pub fn into_iter(self) -> impl Iterator<Item = (K, V)> {
+        self.map.into_inner().into_iter()
+    }
 }
 
 impl<K, V, S> OnceMap<K, V, S>

@@ -155,6 +155,16 @@ impl<'a, K, V> IntoIterator for &'a HashMap<K, V> {
     }
 }
 
+impl<K, V> IntoIterator for HashMap<K, V> {
+    type Item = (K, V);
+    type IntoIter = hashbrown::raw::RawIntoIter<(K, V)>;
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
 impl<K, V> fmt::Debug for HashMap<K, V>
 where
     K: fmt::Debug,

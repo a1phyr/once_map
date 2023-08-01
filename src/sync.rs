@@ -330,6 +330,13 @@ impl<K, V, S> OnceMap<K, V, S> {
             .flat_map(|s| s.map.get_mut().iter_mut())
     }
 
+    pub fn into_iter(self) -> impl Iterator<Item = (K, V)> {
+        self.shards
+            .into_vec()
+            .into_iter()
+            .flat_map(|s| s.map.into_inner().into_iter())
+    }
+
     pub fn hasher(&self) -> &S {
         &self.hash_builder
     }
