@@ -42,6 +42,10 @@ impl<K, V, S> OnceMap<K, V, S> {
     pub fn clear(&mut self) {
         self.map.get_mut().clear();
     }
+
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (&K, &mut V)> {
+        self.map.get_mut().iter_mut()
+    }
 }
 
 impl<K, V, S> OnceMap<K, V, S>
