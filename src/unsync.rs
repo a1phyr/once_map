@@ -87,6 +87,7 @@ where
     S: BuildHasher,
     V: StableDeref,
 {
+    /// Returns a reference to the value corresponding to the key.
     pub fn get<Q>(&self, key: &Q) -> Option<&V::Target>
     where
         Q: Hash + Equivalent<K> + ?Sized,
@@ -94,10 +95,16 @@ where
         self.map_get(key, |_, v| unsafe { extend_lifetime(v) })
     }
 
+    /// Returns a reference to the value corresponding to the key or insert one
+    /// with the given closure.
     pub fn insert(&self, key: K, make_val: impl FnOnce(&K) -> V) -> &V::Target {
         self.map_insert(key, make_val, |_, v| unsafe { extend_lifetime(v) })
     }
 
+    /// Same as `insert` but the closure is allowed to fail.
+    ///
+    /// If the closure is called and an error is returned, no value is stored in
+    /// the map.
     pub fn try_insert<E>(
         &self,
         key: K,
@@ -438,6 +445,7 @@ where
     }
 }
 
+/// Creates a `LazyMap` that fills all values with `V::default()`.
 impl<K, V: Default, S: Default> Default for LazyMap<K, V, S> {
     fn default() -> Self {
         Self::with_hasher(S::default(), |_| V::default())

@@ -20,6 +20,7 @@ use core::{
     hash::{BuildHasher, Hash, Hasher},
 };
 
+/// Generalization of `Borrow` that works with more types.
 pub trait Equivalent<K: ?Sized> {
     fn equivalent(&self, key: &K) -> bool;
 }
@@ -34,6 +35,7 @@ where
     }
 }
 
+/// Generalization of `ToOwned` that works with more types.
 pub trait ToOwnedEquivalent<K>: Equivalent<K> {
     fn to_owned_equivalent(&self) -> K;
 }
@@ -80,6 +82,7 @@ use std::collections::hash_map::{DefaultHasher as HasherInner, RandomState as Ra
 #[cfg(all(not(feature = "ahash"), not(feature = "std")))]
 compile_error!("Either feature `ahash` or `std` must be enabled");
 
+/// The default hasher used by this crate.
 #[derive(Debug, Clone)]
 pub struct RandomState(RandomStateInner);
 
