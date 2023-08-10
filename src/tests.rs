@@ -63,6 +63,18 @@ fn reentrant_init() {
 }
 
 #[test]
+fn panic_init() {
+    let store = OnceMap::new();
+
+    let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        store.insert(0, |_| panic!())
+    }));
+    assert!(res.is_err());
+
+    assert!(store.insert(0, |x| x.to_string()) == "0");
+}
+
+#[test]
 fn lazy() {
     let init_count = Cell::new(0);
     let int_map = LazyMap::new(|n: &i32| {
