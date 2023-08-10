@@ -63,6 +63,14 @@ impl<K, V> HashMap<K, V> {
     }
 
     #[inline]
+    pub fn values_mut(&mut self) -> ValuesMut<K, V> {
+        ValuesMut {
+            iter: unsafe { self.0.iter() },
+            _lt: PhantomData,
+        }
+    }
+
+    #[inline]
     pub fn clear(&mut self) {
         self.0.clear();
     }
@@ -295,6 +303,26 @@ impl<'a, K, V> Iterator for Values<'a, K, V> {
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         let (_, v) = unsafe { self.iter.next()?.as_ref() };
+        Some(v)
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.iter.size_hint()
+    }
+}
+
+pub struct ValuesMut<'a, K, V> {
+    _lt: PhantomData<&'a mut HashMap<K, V>>,
+    iter: RawIter<(K, V)>,
+}
+
+impl<'a, K, V> Iterator for ValuesMut<'a, K, V> {
+    type Item = &'a mut V;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        let (_, v) = unsafe { self.iter.next()?.as_mut() };
         Some(v)
     }
 

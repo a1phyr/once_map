@@ -324,6 +324,12 @@ impl<K, V, S> OnceMap<K, V, S> {
         self.shards.iter_mut().for_each(|s| s.map.get_mut().clear());
     }
 
+    pub fn values_mut(&mut self) -> impl Iterator<Item = &mut V> {
+        self.shards
+            .iter_mut()
+            .flat_map(|s| s.map.get_mut().values_mut())
+    }
+
     pub fn iter_mut(&mut self) -> impl Iterator<Item = (&K, &mut V)> {
         self.shards
             .iter_mut()
