@@ -336,6 +336,7 @@ impl<K, V, S> OnceMap<K, V, S> {
             .flat_map(|s| s.map.get_mut().iter_mut())
     }
 
+    #[allow(clippy::should_implement_trait)]
     pub fn into_iter(self) -> impl Iterator<Item = (K, V)> {
         self.shards
             .into_vec()
