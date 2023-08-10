@@ -253,7 +253,7 @@ impl<'a, K, V> Iterator for Iter<'a, K, V> {
 }
 
 pub struct IterMut<'a, K, V> {
-    _lt: PhantomData<&'a HashMap<K, V>>,
+    _lt: PhantomData<&'a mut HashMap<K, V>>,
     iter: RawIter<(K, V)>,
 }
 
