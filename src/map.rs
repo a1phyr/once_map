@@ -152,6 +152,18 @@ where
 
     #[inline]
     #[allow(clippy::manual_map)]
+    pub fn get_mut<Q>(&mut self, hash: u64, k: &Q) -> Option<&mut V>
+    where
+        Q: Hash + Equivalent<K> + ?Sized,
+    {
+        match self.0.find_mut(hash, equivalent(k)) {
+            Some((_, v)) => Some(v),
+            None => None,
+        }
+    }
+
+    #[inline]
+    #[allow(clippy::manual_map)]
     pub fn get_key_value<Q>(&self, hash: u64, k: &Q) -> Option<(&K, &V)>
     where
         Q: Hash + Equivalent<K> + ?Sized,
@@ -183,6 +195,21 @@ where
     }
 
     #[inline]
+    pub fn insert<S>(&mut self, hash: u64, key: K, value: V, hasher: &S) -> Option<V>
+    where
+        S: core::hash::BuildHasher,
+    {
+        match self.entry(hash, &key, hasher) {
+            Entry::Vacant(e) => {
+                e.insert(key, value);
+                None
+            }
+            Entry::Occupied(e) => Some(e.insert(value)),
+        }
+    }
+
+    #[inline]
+    #[allow(clippy::manual_map)]
     pub fn remove<Q>(&mut self, hash: u64, k: &Q) -> Option<V>
     where
         Q: Hash + Equivalent<K> + ?Sized,
@@ -236,6 +263,22 @@ impl<K, V> OccupiedEntry<'_, K, V> {
     #[inline]
     pub fn get(&self) -> &V {
         &self.0.get().1
+    }
+
+    #[inline]
+    pub fn insert(mut self, value: V) -> V {
+        let slot = &mut self.0.get_mut().1;
+        std::mem::replace(slot, value)
+    }
+
+    #[inline]
+    pub fn remove(self) -> V {
+        self.0.remove().0 .1
+    }
+
+    #[inline]
+    pub fn remove_entry(self) -> (K, V) {
+        self.0.remove().0
     }
 }
 

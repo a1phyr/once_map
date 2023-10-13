@@ -398,6 +398,10 @@ impl<K, V, S> OnceMap<K, V, S> {
     pub fn read_only_view(&self) -> ReadOnlyView<K, V, S> {
         ReadOnlyView::new(self)
     }
+
+    pub fn mutable_view(&mut self) -> MutableView<'_, K, V, S> {
+        MutableView { map: self }
+    }
 }
 
 #[cfg(feature = "rayon")]
@@ -666,8 +670,10 @@ where
     S: BuildHasher,
 {
     fn extend<T: IntoIterator<Item = (K, V)>>(&mut self, iter: T) {
-        iter.into_iter()
-            .for_each(|(k, v)| self.map_insert(k, |_| v, |_, _| ()))
+        let mut this = self.mutable_view();
+        iter.into_iter().for_each(|(k, v)| {
+            this.insert(k, v);
+        });
     }
 }
 
@@ -984,6 +990,150 @@ where
 }
 
 impl<K, V, S> fmt::Debug for ReadOnlyView<'_, K, V, S>
+where
+    K: fmt::Debug,
+    V: fmt::Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_map().entries(self.iter()).finish()
+    }
+}
+
+pub struct MutableView<'a, K, V, S> {
+    map: &'a mut OnceMap<K, V, S>,
+}
+
+impl<K, V, S> MutableView<'_, K, V, S> {
+    fn iter_shards(&self) -> impl Iterator<Item = &HashMap<K, V>> {
+        self.map
+            .shards
+            .iter()
+            .map(|s| unsafe { &*s.map.data_ptr() })
+    }
+
+    fn iter_shards_mut(&mut self) -> impl Iterator<Item = &mut HashMap<K, V>> {
+        self.map.shards.iter_mut().map(|s| s.map.get_mut())
+    }
+
+    pub fn len(&self) -> usize {
+        self.iter_shards().map(|s| s.len()).sum()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.iter_shards().all(|s| s.is_empty())
+    }
+
+    pub fn keys(&self) -> impl Iterator<Item = &K> {
+        self.iter_shards().flat_map(|s| s.keys())
+    }
+
+    pub fn values(&self) -> impl Iterator<Item = &V> {
+        self.iter_shards().flat_map(|s| s.values())
+    }
+
+    pub fn values_mut(&mut self) -> impl Iterator<Item = &mut V> {
+        self.iter_shards_mut().flat_map(|s| s.values_mut())
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&K, &V)> {
+        self.iter_shards().flat_map(|s| s.iter())
+    }
+
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (&K, &mut V)> {
+        self.iter_shards_mut().flat_map(|s| s.iter_mut())
+    }
+
+    pub fn clear(&mut self) {
+        self.iter_shards_mut().for_each(|s| s.clear());
+    }
+}
+
+impl<K, V, S> MutableView<'_, K, V, S>
+where
+    K: Eq + Hash,
+    S: BuildHasher,
+{
+    fn hash_one<Q>(&self, key: &Q) -> u64
+    where
+        Q: Hash + Equivalent<K> + ?Sized,
+    {
+        crate::hash_one(&self.map.hash_builder, key)
+    }
+
+    fn get_shard(&self, hash: u64) -> &HashMap<K, V> {
+        let len = self.map.shards.len();
+        let shard = &self.map.shards[(len - 1) & (hash as usize)];
+        unsafe { &*shard.map.data_ptr() }
+    }
+
+    fn get_shard_mut(&mut self, hash: u64) -> &mut HashMap<K, V> {
+        let len = self.map.shards.len();
+        self.map.shards[(len - 1) & (hash as usize)].map.get_mut()
+    }
+
+    fn get_shard_mut_and_hasher(&mut self, hash: u64) -> (&mut HashMap<K, V>, &S) {
+        let len = self.map.shards.len();
+        let shard = self.map.shards[(len - 1) & (hash as usize)].map.get_mut();
+        (shard, &self.map.hash_builder)
+    }
+
+    pub fn contains_key<Q>(&self, key: &Q) -> bool
+    where
+        Q: Hash + Equivalent<K> + ?Sized,
+    {
+        let hash = self.hash_one(key);
+        self.get_shard(hash).contains_key(hash, key)
+    }
+
+    pub fn get<Q>(&self, key: &Q) -> Option<&V>
+    where
+        Q: Hash + Equivalent<K> + ?Sized,
+    {
+        let hash = self.hash_one(key);
+        self.get_shard(hash).get(hash, key)
+    }
+
+    pub fn get_mut<Q>(&mut self, key: &Q) -> Option<&mut V>
+    where
+        Q: Hash + Equivalent<K> + ?Sized,
+    {
+        let hash = self.hash_one(key);
+        self.get_shard_mut(hash).get_mut(hash, key)
+    }
+
+    pub fn get_key_value<Q>(&self, key: &Q) -> Option<(&K, &V)>
+    where
+        Q: Hash + Equivalent<K> + ?Sized,
+    {
+        let hash = self.hash_one(key);
+        self.get_shard(hash).get_key_value(hash, key)
+    }
+
+    pub fn insert(&mut self, key: K, value: V) -> Option<V> {
+        let hash = self.hash_one(&key);
+        let (shard, hasher) = self.get_shard_mut_and_hasher(hash);
+        shard.insert(hash, key, value, hasher)
+    }
+
+    pub fn remove<Q>(&mut self, key: &Q) -> Option<V>
+    where
+        Q: Hash + Equivalent<K> + ?Sized,
+    {
+        let hash = self.hash_one(key);
+        let (_, v) = self.get_shard_mut(hash).remove_entry(hash, key)?;
+        Some(v)
+    }
+
+    pub fn remove_entry<Q>(&mut self, key: &Q) -> Option<(K, V)>
+    where
+        Q: Hash + Equivalent<K> + ?Sized,
+    {
+        let hash = self.hash_one(key);
+        self.get_shard_mut(hash).remove_entry(hash, key)
+    }
+}
+
+impl<K, V, S> fmt::Debug for MutableView<'_, K, V, S>
 where
     K: fmt::Debug,
     V: fmt::Debug,
