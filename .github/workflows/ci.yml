@@ -7,21 +7,17 @@ jobs:
     name: Run tests and clippy
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout sources
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: cargo clippy
-        run: cargo clippy -- -D warnings
-
-      - name: cargo test
-        run: cargo test
+      - run: cargo clippy --all-features -- -D warnings
+      - run: cargo test
+      - run: cargo test --all-features
 
   check-no_std:
     name: Check no_std
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout sources
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Install toolchain
         run: rustup target add aarch64-unknown-none
@@ -33,8 +29,6 @@ jobs:
     name: Check formatting
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout sources
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: cargo fmt -- --check
-        run: cargo fmt -- --check
+      - run: cargo fmt -- --check
