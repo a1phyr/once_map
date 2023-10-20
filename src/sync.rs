@@ -599,6 +599,50 @@ impl<K, V, S: Default> Default for OnceMap<K, V, S> {
     }
 }
 
+impl<K, V, S> Extend<(K, V)> for OnceMap<K, V, S>
+where
+    K: Eq + Hash,
+    S: BuildHasher,
+{
+    fn extend<T: IntoIterator<Item = (K, V)>>(&mut self, iter: T) {
+        iter.into_iter()
+            .for_each(|(k, v)| self.map_insert(k, |_| v, |_, _| ()))
+    }
+}
+
+impl<K, V, S> Extend<(K, V)> for &'_ OnceMap<K, V, S>
+where
+    K: Eq + Hash,
+    S: BuildHasher,
+{
+    fn extend<T: IntoIterator<Item = (K, V)>>(&mut self, iter: T) {
+        iter.into_iter()
+            .for_each(|(k, v)| self.map_insert(k, |_| v, |_, _| ()))
+    }
+}
+
+impl<K, V, S> FromIterator<(K, V)> for OnceMap<K, V, S>
+where
+    K: Eq + Hash,
+    S: BuildHasher + Default,
+{
+    fn from_iter<T: IntoIterator<Item = (K, V)>>(iter: T) -> Self {
+        let mut map = OnceMap::default();
+        map.extend(iter);
+        map
+    }
+}
+
+impl<K, V, S, const N: usize> From<[(K, V); N]> for OnceMap<K, V, S>
+where
+    K: Eq + Hash,
+    S: BuildHasher + Default,
+{
+    fn from(array: [(K, V); N]) -> Self {
+        Self::from_iter(array)
+    }
+}
+
 #[cfg(feature = "rayon")]
 #[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
 impl<K, V, S> ParallelExtend<(K, V)> for OnceMap<K, V, S>
