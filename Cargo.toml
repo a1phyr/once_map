@@ -20,7 +20,7 @@ default = ["std", "ahash"]
 std = ["dep:parking_lot", "stable_deref_trait/std", "ahash?/std", "ahash?/runtime-rng"]
 ahash = ["dep:ahash", "hashbrown/ahash"]
 
-rayon = ["dep:rayon", "hashbrown/rayon"]
+rayon = ["dep:rayon", "hashbrown/rayon", "std"]
 
 [dependencies]
 ahash = { version = "0.8", default-features = false, optional = true }
