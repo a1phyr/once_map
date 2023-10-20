@@ -87,3 +87,21 @@ fn lazy() {
     assert_eq!(&int_map[&3], "3");
     assert_eq!(init_count.get(), 2)
 }
+
+#[cfg(feature = "rayon")]
+#[test]
+fn rayon() {
+    use rayon::prelude::*;
+
+    let map: OnceMap<_, _> = (0..1000)
+        .into_par_iter()
+        .map(|n| (n, n.to_string()))
+        .collect();
+
+    let view = map.read_only_view();
+
+    assert_eq!(
+        view.par_values().map(|s| s.len()).sum::<usize>(),
+        view.values().map(|s| s.len()).sum()
+    );
+}

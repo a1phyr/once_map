@@ -599,6 +599,60 @@ impl<K, V, S: Default> Default for OnceMap<K, V, S> {
     }
 }
 
+#[cfg(feature = "rayon")]
+#[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
+impl<K, V, S> ParallelExtend<(K, V)> for OnceMap<K, V, S>
+where
+    K: Eq + Hash + Send + Sync,
+    V: Send + Sync,
+    S: BuildHasher + Default + Sync,
+{
+    fn par_extend<I>(&mut self, par_iter: I)
+    where
+        I: IntoParallelIterator<Item = (K, V)>,
+    {
+        par_iter
+            .into_par_iter()
+            .for_each(|(k, v)| self.map_insert(k, |_| v, |_, _| ()));
+    }
+}
+
+#[cfg(feature = "rayon")]
+#[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
+impl<K, V, S> ParallelExtend<(K, V)> for &'_ OnceMap<K, V, S>
+where
+    K: Eq + Hash + Send + Sync,
+    V: Send + Sync,
+    S: BuildHasher + Default + Sync,
+{
+    fn par_extend<I>(&mut self, par_iter: I)
+    where
+        I: IntoParallelIterator<Item = (K, V)>,
+    {
+        par_iter
+            .into_par_iter()
+            .for_each(|(k, v)| self.map_insert(k, |_| v, |_, _| ()));
+    }
+}
+
+#[cfg(feature = "rayon")]
+#[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
+impl<K, V, S> FromParallelIterator<(K, V)> for OnceMap<K, V, S>
+where
+    K: Eq + Hash + Send + Sync,
+    V: Send + Sync,
+    S: BuildHasher + Default + Sync,
+{
+    fn from_par_iter<I>(par_iter: I) -> Self
+    where
+        I: IntoParallelIterator<Item = (K, V)>,
+    {
+        let mut map = Self::default();
+        map.par_extend(par_iter);
+        map
+    }
+}
+
 impl<K, V, S> fmt::Debug for OnceMap<K, V, S>
 where
     K: fmt::Debug,
