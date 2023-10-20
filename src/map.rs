@@ -1,6 +1,8 @@
 use crate::Equivalent;
 use core::{fmt, hash::Hash};
 use hashbrown::hash_table;
+#[cfg(feature = "rayon")]
+use rayon::prelude::*;
 
 #[inline]
 fn equivalent<Q, K, V>(key: &Q) -> impl Fn(&(K, V)) -> bool + '_
@@ -58,6 +60,28 @@ impl<K, V> HashMap<K, V> {
     #[inline]
     pub fn clear(&mut self) {
         self.0.clear();
+    }
+}
+
+#[cfg(feature = "rayon")]
+impl<K, V> HashMap<K, V>
+where
+    K: Sync,
+    V: Sync,
+{
+    #[inline]
+    pub fn par_iter(&self) -> impl rayon::iter::ParallelIterator<Item = (&K, &V)> + '_ {
+        self.0.par_iter().map(|(k, v)| (k, v))
+    }
+
+    #[inline]
+    pub fn par_keys(&self) -> impl rayon::iter::ParallelIterator<Item = &K> + '_ {
+        self.0.par_iter().map(|(k, _)| k)
+    }
+
+    #[inline]
+    pub fn par_values(&self) -> impl rayon::iter::ParallelIterator<Item = &V> + '_ {
+        self.0.par_iter().map(|(_, v)| v)
     }
 }
 

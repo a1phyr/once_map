@@ -381,6 +381,26 @@ where
     }
 }
 
+#[cfg(feature = "rayon")]
+#[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
+impl<'a, K, V, S> ReadOnlyView<'a, K, V, S>
+where
+    K: Sync,
+    V: Sync,
+{
+    pub fn par_iter(&self) -> impl rayon::iter::ParallelIterator<Item = (&K, &V)> {
+        self.map.par_iter()
+    }
+
+    pub fn par_keys(&self) -> impl rayon::iter::ParallelIterator<Item = &K> {
+        self.map.par_keys()
+    }
+
+    pub fn par_values(&self) -> impl rayon::iter::ParallelIterator<Item = &V> {
+        self.map.par_values()
+    }
+}
+
 impl<'a, K, V, S> fmt::Debug for ReadOnlyView<'a, K, V, S>
 where
     K: fmt::Debug,

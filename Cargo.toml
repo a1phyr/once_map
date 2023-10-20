@@ -20,12 +20,15 @@ default = ["std", "ahash"]
 std = ["dep:parking_lot", "stable_deref_trait/std", "ahash?/std", "ahash?/runtime-rng"]
 ahash = ["dep:ahash", "hashbrown/ahash"]
 
+rayon = ["dep:rayon", "hashbrown/rayon"]
+
 [dependencies]
 ahash = { version = "0.8", default-features = false, optional = true }
 hashbrown = { version = "0.14.2", default-features = false, features = ["raw"] }
 stable_deref_trait = { version = "1.2", features = ["alloc"], default-features = false }
 
 parking_lot = { version = "0.12", optional = true }
+rayon = { version = "1.6", optional = true }
 
 [dev-dependencies]
 crossbeam-utils = "0.8.7"

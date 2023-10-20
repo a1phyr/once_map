@@ -7,6 +7,8 @@ use core::{
     ptr::NonNull,
 };
 use parking_lot::{Condvar, Mutex, MutexGuard, RwLock};
+#[cfg(feature = "rayon")]
+use rayon::prelude::*;
 use stable_deref_trait::StableDeref;
 
 unsafe fn extend_lifetime<'a, T: StableDeref>(ptr: &T) -> &'a T::Target {
@@ -718,6 +720,31 @@ impl<K, V, S> Drop for ReadOnlyView<'_, K, V, S> {
         for shard in self.shards.iter() {
             unsafe { shard.0.map.force_unlock_read() }
         }
+    }
+}
+
+#[cfg(feature = "rayon")]
+#[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
+impl<'a, K, V, S> ReadOnlyView<'a, K, V, S>
+where
+    K: Sync,
+    V: Sync,
+{
+    #[inline]
+    fn par_iter_shards(&self) -> impl rayon::iter::IndexedParallelIterator<Item = &HashMap<K, V>> {
+        self.shards.par_iter().map(|shard| shard.get())
+    }
+
+    pub fn par_iter(&self) -> impl rayon::iter::ParallelIterator<Item = (&K, &V)> {
+        self.par_iter_shards().flat_map(|shard| shard.par_iter())
+    }
+
+    pub fn par_keys(&self) -> impl rayon::iter::ParallelIterator<Item = &K> {
+        self.par_iter_shards().flat_map(|shard| shard.par_keys())
+    }
+
+    pub fn par_values(&self) -> impl rayon::iter::ParallelIterator<Item = &V> {
+        self.par_iter_shards().flat_map(|shard| shard.par_values())
     }
 }
 
