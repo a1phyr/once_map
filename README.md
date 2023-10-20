@@ -2,7 +2,7 @@
 
 [![Crates.io](https://img.shields.io/crates/v/once_map.svg)](https://crates.io/crates/once_map)
 [![Docs.rs](https://docs.rs/once_map/badge.svg)](https://docs.rs/once_map/)
-![Minimum rustc version](https://img.shields.io/badge/rustc-1.61+-lightgray.svg)
+![Minimum rustc version](https://img.shields.io/badge/rustc-1.63+-lightgray.svg)
 
 This crate provides `OnceMap`, a type of `HashMap` where entries can be written with a shared reference,
 but can be written ony once. This is similar to [`once_cell`], but with a map.
