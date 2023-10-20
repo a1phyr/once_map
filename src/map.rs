@@ -1,6 +1,6 @@
 use crate::Equivalent;
-use core::{fmt, hash::Hash, marker::PhantomData};
-use hashbrown::raw::{Bucket, RawIter, RawTable};
+use core::{fmt, hash::Hash};
+use hashbrown::hash_table;
 
 #[inline]
 fn equivalent<Q, K, V>(key: &Q) -> impl Fn(&(K, V)) -> bool + '_
@@ -12,12 +12,12 @@ where
 
 /// This is just like std's `HashMap`, but it does not store its `BuildHasher`,
 /// so it has to be provided (or a hash) for each operation.
-pub struct HashMap<K, V>(RawTable<(K, V)>);
+pub struct HashMap<K, V>(hash_table::HashTable<(K, V)>);
 
 impl<K, V> HashMap<K, V> {
     #[inline]
     pub const fn new() -> Self {
-        Self(RawTable::new())
+        Self(hash_table::HashTable::new())
     }
 
     #[inline]
@@ -31,43 +31,28 @@ impl<K, V> HashMap<K, V> {
     }
 
     #[inline]
-    pub fn iter(&self) -> Iter<K, V> {
-        Iter {
-            iter: unsafe { self.0.iter() },
-            _lt: PhantomData,
-        }
+    pub fn iter(&self) -> impl Iterator<Item = (&K, &V)> {
+        self.0.iter().map(|(k, v)| (k, v))
     }
 
     #[inline]
-    pub fn iter_mut(&mut self) -> IterMut<K, V> {
-        IterMut {
-            iter: unsafe { self.0.iter() },
-            _lt: PhantomData,
-        }
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (&K, &mut V)> {
+        self.0.iter_mut().map(|(k, v)| (&*k, v))
     }
 
     #[inline]
-    pub fn keys(&self) -> Keys<K, V> {
-        Keys {
-            iter: unsafe { self.0.iter() },
-            _lt: PhantomData,
-        }
+    pub fn keys(&self) -> impl Iterator<Item = &K> {
+        self.0.iter().map(|(k, _)| k)
     }
 
     #[inline]
-    pub fn values(&self) -> Values<K, V> {
-        Values {
-            iter: unsafe { self.0.iter() },
-            _lt: PhantomData,
-        }
+    pub fn values(&self) -> impl Iterator<Item = &V> {
+        self.0.iter().map(|(_, v)| v)
     }
 
     #[inline]
-    pub fn values_mut(&mut self) -> ValuesMut<K, V> {
-        ValuesMut {
-            iter: unsafe { self.0.iter() },
-            _lt: PhantomData,
-        }
+    pub fn values_mut(&mut self) -> impl Iterator<Item = &mut V> {
+        self.0.iter_mut().map(|(_, v)| v)
     }
 
     #[inline]
@@ -86,7 +71,7 @@ where
     where
         Q: Hash + Equivalent<K> + ?Sized,
     {
-        match self.0.get(hash, equivalent(k)) {
+        match self.0.find(hash, equivalent(k)) {
             Some((_, v)) => Some(v),
             None => None,
         }
@@ -98,7 +83,7 @@ where
     where
         Q: Hash + Equivalent<K> + ?Sized,
     {
-        match self.0.get(hash, equivalent(k)) {
+        match self.0.find(hash, equivalent(k)) {
             Some((k, v)) => Some((k, v)),
             None => None,
         }
@@ -109,7 +94,7 @@ where
     where
         Q: Hash + Equivalent<K> + ?Sized,
     {
-        self.0.get(hash, equivalent(k)).is_some()
+        self.0.find(hash, equivalent(k)).is_some()
     }
 
     #[inline]
@@ -119,28 +104,20 @@ where
         S: core::hash::BuildHasher,
     {
         let hash_one = |(k, _): &(K, V)| crate::hash_one(hasher, k);
-        match self
-            .0
-            .find_or_find_insert_slot(hash, equivalent(k), hash_one)
-        {
-            Ok(bucket) => Entry::Occupied(OccupiedEntry { map: self, bucket }),
-            Err(slot) => Entry::Vacant(VacantEntry {
-                map: self,
-                hash,
-                slot,
-            }),
+        match self.0.entry(hash, equivalent(k), hash_one) {
+            hash_table::Entry::Occupied(e) => Entry::Occupied(OccupiedEntry(e)),
+            hash_table::Entry::Vacant(e) => Entry::Vacant(VacantEntry(e)),
         }
     }
 
     #[inline]
-    #[allow(clippy::manual_map)]
     pub fn remove<Q>(&mut self, hash: u64, k: &Q) -> Option<V>
     where
         Q: Hash + Equivalent<K> + ?Sized,
     {
-        match self.0.remove_entry(hash, equivalent(k)) {
-            Some((_, v)) => Some(v),
-            None => None,
+        match self.0.find_entry(hash, equivalent(k)) {
+            Ok(e) => Some(e.remove().0 .1),
+            Err(_) => None,
         }
     }
 
@@ -149,23 +126,16 @@ where
     where
         Q: Hash + Equivalent<K> + ?Sized,
     {
-        self.0.remove_entry(hash, equivalent(k))
-    }
-}
-
-impl<'a, K, V> IntoIterator for &'a HashMap<K, V> {
-    type Item = (&'a K, &'a V);
-    type IntoIter = Iter<'a, K, V>;
-
-    #[inline]
-    fn into_iter(self) -> Self::IntoIter {
-        self.iter()
+        match self.0.find_entry(hash, equivalent(k)) {
+            Ok(e) => Some(e.remove().0),
+            Err(_) => None,
+        }
     }
 }
 
 impl<K, V> IntoIterator for HashMap<K, V> {
     type Item = (K, V);
-    type IntoIter = hashbrown::raw::RawIntoIter<(K, V)>;
+    type IntoIter = hash_table::IntoIter<(K, V)>;
 
     #[inline]
     fn into_iter(self) -> Self::IntoIter {
@@ -188,34 +158,16 @@ pub enum Entry<'a, K, V> {
     Occupied(OccupiedEntry<'a, K, V>),
 }
 
-pub struct OccupiedEntry<'a, K, V> {
-    map: &'a mut HashMap<K, V>,
-    bucket: Bucket<(K, V)>,
-}
+pub struct OccupiedEntry<'a, K, V>(hash_table::OccupiedEntry<'a, (K, V)>);
 
 impl<'a, K, V> OccupiedEntry<'a, K, V> {
     #[inline]
     pub fn get(&self) -> &V {
-        unsafe { &self.bucket.as_ref().1 }
-    }
-
-    #[inline]
-    pub fn remove(self) -> V {
-        unsafe { self.map.0.remove(self.bucket).0 .1 }
-    }
-
-    #[inline]
-
-    pub fn remove_entry(self) -> (K, V) {
-        unsafe { self.map.0.remove(self.bucket).0 }
+        &self.0.get().1
     }
 }
 
-pub struct VacantEntry<'a, K, V> {
-    map: &'a mut HashMap<K, V>,
-    hash: u64,
-    slot: hashbrown::raw::InsertSlot,
-}
+pub struct VacantEntry<'a, K, V>(hash_table::VacantEntry<'a, (K, V)>);
 
 impl<'a, K, V> VacantEntry<'a, K, V>
 where
@@ -223,111 +175,6 @@ where
 {
     #[inline]
     pub fn insert(self, key: K, value: V) -> &'a mut (K, V) {
-        unsafe {
-            self.map
-                .0
-                .insert_in_slot(self.hash, self.slot, (key, value))
-                .as_mut()
-        }
-    }
-}
-
-pub struct Iter<'a, K, V> {
-    _lt: PhantomData<&'a HashMap<K, V>>,
-    iter: RawIter<(K, V)>,
-}
-
-impl<'a, K, V> Iterator for Iter<'a, K, V> {
-    type Item = (&'a K, &'a V);
-
-    #[inline]
-    fn next(&mut self) -> Option<Self::Item> {
-        let (k, v) = unsafe { self.iter.next()?.as_ref() };
-        Some((k, v))
-    }
-
-    #[inline]
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        self.iter.size_hint()
-    }
-}
-
-pub struct IterMut<'a, K, V> {
-    _lt: PhantomData<&'a mut HashMap<K, V>>,
-    iter: RawIter<(K, V)>,
-}
-
-impl<'a, K, V> Iterator for IterMut<'a, K, V> {
-    type Item = (&'a K, &'a mut V);
-
-    #[inline]
-    fn next(&mut self) -> Option<Self::Item> {
-        let (k, v) = unsafe { self.iter.next()?.as_mut() };
-        Some((k, v))
-    }
-
-    #[inline]
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        self.iter.size_hint()
-    }
-}
-
-pub struct Keys<'a, K, V> {
-    _lt: PhantomData<&'a HashMap<K, V>>,
-    iter: RawIter<(K, V)>,
-}
-
-impl<'a, K, V> Iterator for Keys<'a, K, V> {
-    type Item = &'a K;
-
-    #[inline]
-    fn next(&mut self) -> Option<Self::Item> {
-        let (k, _) = unsafe { self.iter.next()?.as_ref() };
-        Some(k)
-    }
-
-    #[inline]
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        self.iter.size_hint()
-    }
-}
-
-pub struct Values<'a, K, V> {
-    _lt: PhantomData<&'a HashMap<K, V>>,
-    iter: RawIter<(K, V)>,
-}
-
-impl<'a, K, V> Iterator for Values<'a, K, V> {
-    type Item = &'a V;
-
-    #[inline]
-    fn next(&mut self) -> Option<Self::Item> {
-        let (_, v) = unsafe { self.iter.next()?.as_ref() };
-        Some(v)
-    }
-
-    #[inline]
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        self.iter.size_hint()
-    }
-}
-
-pub struct ValuesMut<'a, K, V> {
-    _lt: PhantomData<&'a mut HashMap<K, V>>,
-    iter: RawIter<(K, V)>,
-}
-
-impl<'a, K, V> Iterator for ValuesMut<'a, K, V> {
-    type Item = &'a mut V;
-
-    #[inline]
-    fn next(&mut self) -> Option<Self::Item> {
-        let (_, v) = unsafe { self.iter.next()?.as_mut() };
-        Some(v)
-    }
-
-    #[inline]
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        self.iter.size_hint()
+        self.0.insert((key, value)).into_mut()
     }
 }
