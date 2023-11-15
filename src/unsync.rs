@@ -22,7 +22,7 @@ impl<K, V> OnceMap<K, V> {
 }
 
 impl<K, V, S> OnceMap<K, V, S> {
-    pub fn with_hasher(hash_builder: S) -> Self {
+    pub const fn with_hasher(hash_builder: S) -> Self {
         let map = RefCell::new(HashMap::new());
         Self { map, hash_builder }
     }
@@ -469,7 +469,7 @@ impl<K, V, F> LazyMap<K, V, crate::RandomState, F> {
 }
 
 impl<K, V, S, F> LazyMap<K, V, S, F> {
-    pub fn with_hasher(hash_builder: S, f: F) -> Self {
+    pub const fn with_hasher(hash_builder: S, f: F) -> Self {
         Self {
             map: OnceMap::with_hasher(hash_builder),
             init: f,
