@@ -11,6 +11,42 @@ use parking_lot::{Condvar, Mutex, MutexGuard, RwLock};
 use rayon::prelude::*;
 use stable_deref_trait::StableDeref;
 
+#[cfg(feature = "std")]
+#[inline]
+fn default_shards_amount() -> usize {
+    use std::{
+        sync::atomic::{AtomicUsize, Ordering},
+        thread::available_parallelism,
+    };
+
+    // We want to cache the result to compute it only once
+    static N_SHARDS: AtomicUsize = AtomicUsize::new(0);
+
+    #[cold]
+    fn load_slow() -> usize {
+        // This is racy but that's fine
+        let n = available_parallelism()
+            .ok()
+            .and_then(|n| n.get().checked_next_power_of_two())
+            .unwrap_or(8);
+        N_SHARDS.store(n * 4, Ordering::Relaxed);
+        n
+    }
+
+    let n = N_SHARDS.load(Ordering::Relaxed);
+    if n != 0 {
+        return n;
+    }
+
+    load_slow()
+}
+
+#[cfg(not(feature = "std"))]
+#[inline]
+fn default_shards_amount() -> usize {
+    32
+}
+
 unsafe fn extend_lifetime<'a, T: StableDeref>(ptr: &T) -> &'a T::Target {
     &*(&**ptr as *const T::Target)
 }
@@ -313,7 +349,7 @@ impl<K, V> OnceMap<K, V> {
 
 impl<K, V, S> OnceMap<K, V, S> {
     pub fn with_hasher(hash_builder: S) -> Self {
-        let shards = (0..32).map(|_| Shard::new()).collect();
+        let shards = (0..default_shards_amount()).map(|_| Shard::new()).collect();
         Self {
             shards,
             hash_builder,
