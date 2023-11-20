@@ -16,20 +16,22 @@ mod map;
 #[cfg(test)]
 mod tests;
 
-use core::{
-    borrow::Borrow,
-    hash::{BuildHasher, Hash, Hasher},
-};
+use core::hash::{BuildHasher, Hash, Hasher};
+
+#[cfg(feature = "equivalent")]
+pub use equivalent::Equivalent;
 
 /// Generalization of `Borrow` that works with more types.
+#[cfg(not(feature = "equivalent"))]
 pub trait Equivalent<K: ?Sized> {
     fn equivalent(&self, key: &K) -> bool;
 }
 
+#[cfg(not(feature = "equivalent"))]
 impl<Q, K> Equivalent<K> for Q
 where
     Q: Eq + ?Sized,
-    K: Borrow<Q> + ?Sized,
+    K: core::borrow::Borrow<Q> + ?Sized,
 {
     fn equivalent(&self, key: &K) -> bool {
         self == key.borrow()
