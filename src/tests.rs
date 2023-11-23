@@ -105,3 +105,51 @@ fn rayon() {
         view.values().map(|s| s.len()).sum()
     );
 }
+
+/// https://github.com/a1phyr/once_map/issues/3
+#[test]
+fn issue_3() {
+    use std::{
+        panic::{catch_unwind, AssertUnwindSafe},
+        sync::Mutex,
+    };
+
+    #[derive(PartialEq, Eq, Debug)]
+    struct H(u32);
+
+    impl std::hash::Hash for H {
+        fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+            if PANIC_ON.lock().unwrap().as_ref() == Some(&self.0) {
+                panic!();
+            }
+            0_u32.hash(state);
+        }
+    }
+
+    static PANIC_ON: Mutex<Option<u32>> = Mutex::new(None);
+
+    let mut map = crate::unsync::OnceMap::new();
+    for i in 1..=28 {
+        map.insert(H(i), |k| {
+            if *k == H(28) {
+                String::from("Hello World!")
+            } else {
+                String::new()
+            }
+        });
+    }
+    for i in 1..=27 {
+        map.remove(&H(i));
+    }
+
+    let hello_world = map.get(&H(28)).unwrap();
+
+    assert!(hello_world == "Hello World!");
+
+    let _ = catch_unwind(AssertUnwindSafe(|| {
+        *PANIC_ON.lock().unwrap() = Some(28);
+        map.insert(H(1), |_| String::new());
+    }));
+
+    assert!(hello_world == "Hello World!");
+}

@@ -1,5 +1,8 @@
 use crate::Equivalent;
-use core::{fmt, hash::Hash};
+use core::{
+    fmt,
+    hash::{BuildHasher, Hash},
+};
 use hashbrown::hash_table;
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
@@ -10,6 +13,40 @@ where
     Q: Hash + Equivalent<K> + ?Sized,
 {
     |(k, _)| key.equivalent(k)
+}
+
+/// Unfortunately `hashbrown` can drop elements if the hash function panics.
+///
+/// We prevent this by:
+/// - Catching unwinds when `std` is enabled and returning a dummy hash
+/// - Panicking in panic when `std` is not enabled, which result in an abort
+///
+/// See https://github.com/a1phyr/once_map/issues/3
+#[inline]
+fn hash_one<S: BuildHasher, K: Hash, V>(hasher: &S) -> impl Fn(&(K, V)) -> u64 + '_ {
+    #[cfg(feature = "std")]
+    let hash_one = |(k, _): &(K, V)| {
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| crate::hash_one(hasher, k)))
+            .unwrap_or(0)
+    };
+
+    #[cfg(not(feature = "std"))]
+    let hash_one = |(k, _): &(K, V)| {
+        struct Guard;
+        impl Drop for Guard {
+            #[inline]
+            fn drop(&mut self) {
+                panic!("Hash implementation panicked");
+            }
+        }
+
+        let guard = Guard;
+        let h = crate::hash_one(hasher, k);
+        core::mem::forget(guard);
+        h
+    };
+
+    hash_one
 }
 
 /// This is just like std's `HashMap`, but it does not store its `BuildHasher`,
@@ -127,8 +164,7 @@ where
         Q: Hash + Equivalent<K> + ?Sized,
         S: core::hash::BuildHasher,
     {
-        let hash_one = |(k, _): &(K, V)| crate::hash_one(hasher, k);
-        match self.0.entry(hash, equivalent(k), hash_one) {
+        match self.0.entry(hash, equivalent(k), hash_one(hasher)) {
             hash_table::Entry::Occupied(e) => Entry::Occupied(OccupiedEntry(e)),
             hash_table::Entry::Vacant(e) => Entry::Vacant(VacantEntry(e)),
         }
