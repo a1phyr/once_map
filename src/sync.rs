@@ -910,6 +910,10 @@ impl<K, V, S, F> LazyMap<K, V, S, F> {
             init: f,
         }
     }
+
+    pub fn clear(&mut self) {
+        self.map.clear();
+    }
 }
 
 impl<K, V, S, F> LazyMap<K, V, S, F>
@@ -954,6 +958,19 @@ where
     {
         self.map
             .map_insert_ref(key, Q::to_owned_equivalent, &self.init, with_result)
+    }
+}
+
+impl<K, V, S, F> LazyMap<K, V, S, F>
+where
+    K: Eq + Hash,
+    S: BuildHasher,
+{
+    pub fn remove<Q>(&mut self, key: &Q) -> Option<V>
+    where
+        Q: Hash + Equivalent<K> + ?Sized,
+    {
+        self.map.remove(key)
     }
 }
 
