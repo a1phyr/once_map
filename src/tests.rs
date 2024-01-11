@@ -15,8 +15,8 @@ fn concurrent_init() {
     let store = OnceMap::new();
     let count = parking_lot::Mutex::new(0);
 
-    crossbeam_utils::thread::scope(|s| {
-        s.spawn(|_| {
+    std::thread::scope(|s| {
+        s.spawn(|| {
             thread::sleep(time::Duration::from_millis(50));
             store.insert(String::from("aaa"), |_| {
                 thread::sleep(time::Duration::from_millis(50));
@@ -25,7 +25,7 @@ fn concurrent_init() {
             })
         });
 
-        s.spawn(|_| {
+        s.spawn(|| {
             thread::sleep(time::Duration::from_millis(50));
             store.insert(String::from("aaa"), |_| {
                 thread::sleep(time::Duration::from_millis(50));
@@ -41,8 +41,7 @@ fn concurrent_init() {
                 Err(())
             })
             .unwrap_err();
-    })
-    .unwrap();
+    });
 
     assert_eq!(*count.lock(), 3);
     assert_eq!(store.get("aaa").unwrap(), "bbb");
