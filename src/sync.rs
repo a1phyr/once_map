@@ -685,7 +685,7 @@ impl<K, V, S> ParallelExtend<(K, V)> for OnceMap<K, V, S>
 where
     K: Eq + Hash + Send + Sync,
     V: Send + Sync,
-    S: BuildHasher + Default + Sync,
+    S: BuildHasher + Sync,
 {
     fn par_extend<I>(&mut self, par_iter: I)
     where
@@ -703,7 +703,7 @@ impl<K, V, S> ParallelExtend<(K, V)> for &'_ OnceMap<K, V, S>
 where
     K: Eq + Hash + Send + Sync,
     V: Send + Sync,
-    S: BuildHasher + Default + Sync,
+    S: BuildHasher + Sync,
 {
     fn par_extend<I>(&mut self, par_iter: I)
     where
