@@ -332,6 +332,7 @@ pub struct OnceMap<K, V, S = crate::RandomState> {
 }
 
 impl<K, V> OnceMap<K, V> {
+    /// Creates an empty `OnceMap`.
     pub fn new() -> Self {
         Self::with_hasher(crate::RandomState::new())
     }
@@ -348,6 +349,7 @@ impl<K, V> OnceMap<K, V> {
 }
 
 impl<K, V, S> OnceMap<K, V, S> {
+    /// Creates an empty `OnceMap` which will use the given hash builder to hash keys.
     pub fn with_hasher(hash_builder: S) -> Self {
         let shards = (0..default_shards_amount()).map(|_| Shard::new()).collect();
         Self {
@@ -358,6 +360,7 @@ impl<K, V, S> OnceMap<K, V, S> {
 }
 
 impl<K, V, S> OnceMap<K, V, S> {
+    /// Removes all key-value pairs from the map, but keeps the allocated memory.
     pub fn clear(&mut self) {
         self.shards.iter_mut().for_each(|s| s.map.get_mut().clear());
     }
@@ -382,10 +385,15 @@ impl<K, V, S> OnceMap<K, V, S> {
             .flat_map(|s| s.map.into_inner().into_iter())
     }
 
+    /// Returns a reference to the map's [`BuildHasher`].
     pub fn hasher(&self) -> &S {
         &self.hash_builder
     }
 
+    /// Locks the whole map for reading.
+    ///
+    /// This enables more methods, such as iterating on the maps, but will cause
+    /// a deadlock if trying to insert values in the map from the same thread.
     pub fn read_only_view(&self) -> ReadOnlyView<K, V, S> {
         ReadOnlyView::new(self)
     }
@@ -413,6 +421,7 @@ where
         &mut self.shards[(len - 1) & (hash as usize)]
     }
 
+    /// Returns `true` if the map contains a value for the specified key.
     pub fn contains_key<Q>(&self, key: &Q) -> bool
     where
         Q: Hash + Equivalent<K> + ?Sized,

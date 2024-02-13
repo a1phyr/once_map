@@ -16,12 +16,14 @@ pub struct OnceMap<K, V, S = crate::RandomState> {
 }
 
 impl<K, V> OnceMap<K, V> {
+    /// Creates an empty `OnceMap`.
     pub fn new() -> Self {
         Self::with_hasher(crate::RandomState::new())
     }
 }
 
 impl<K, V, S> OnceMap<K, V, S> {
+    /// Creates an empty `OnceMap` which will use the given hash builder to hash keys.
     pub const fn with_hasher(hash_builder: S) -> Self {
         let map = RefCell::new(HashMap::new());
         Self { map, hash_builder }
@@ -35,10 +37,15 @@ impl<K, V, S> OnceMap<K, V, S> {
         self.map.borrow().is_empty()
     }
 
+    /// Locks the whole map for reading.
+    ///
+    /// This enables more methods, such as iterating on the maps, but will cause
+    /// a panic if trying to insert values in the map while the view is live.
     pub fn read_only_view(&self) -> ReadOnlyView<K, V, S> {
         ReadOnlyView::new(self)
     }
 
+    /// Removes all key-value pairs from the map, but keeps the allocated memory.
     pub fn clear(&mut self) {
         self.map.get_mut().clear();
     }
@@ -69,6 +76,7 @@ where
         crate::hash_one(&self.hash_builder, key)
     }
 
+    /// Returns `true` if the map contains a value for the specified key.
     pub fn contains_key<Q>(&self, key: &Q) -> bool
     where
         Q: Hash + Equivalent<K> + ?Sized,
