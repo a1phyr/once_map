@@ -37,6 +37,11 @@ impl<K, V, S> OnceMap<K, V, S> {
         self.map.borrow().is_empty()
     }
 
+    /// Returns a reference to the map's [`BuildHasher`].
+    pub fn hasher(&self) -> &S {
+        &self.hash_builder
+    }
+
     /// Locks the whole map for reading.
     ///
     /// This enables more methods, such as iterating on the maps, but will cause
