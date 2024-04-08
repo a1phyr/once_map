@@ -28,8 +28,9 @@ fn default_shards_amount() -> usize {
         let n = available_parallelism()
             .ok()
             .and_then(|n| n.get().checked_next_power_of_two())
-            .unwrap_or(8);
-        N_SHARDS.store(n * 4, Ordering::Relaxed);
+            .and_then(|n| n.checked_mul(4))
+            .unwrap_or(16);
+        N_SHARDS.store(n, Ordering::Relaxed);
         n
     }
 
