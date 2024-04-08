@@ -214,6 +214,7 @@ where
         }
     }
 
+    #[cold]
     fn get_or_try_insert<E, T, U>(
         &self,
         hash: u64,
@@ -594,14 +595,14 @@ where
         on_occupied: impl FnOnce(T, &K, &V) -> U,
     ) -> Result<U, E> {
         let hash = self.hash_one(&key);
-        self.get_shard(hash).get_or_try_insert(
-            hash,
-            key,
-            data,
-            &self.hash_builder,
-            on_vacant,
-            on_occupied,
-        )
+        let shard = self.get_shard(hash);
+
+        match shard.try_get(hash, &key, data, on_occupied) {
+            Ok(result) => Ok(result),
+            Err((data, on_occupied)) => {
+                shard.get_or_try_insert(hash, key, data, &self.hash_builder, on_vacant, on_occupied)
+            }
+        }
     }
 
     pub fn get_or_try_insert_ref<Q, T, U, E>(
