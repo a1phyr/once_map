@@ -69,6 +69,18 @@ impl<K, V, S> OnceMap<K, V, S> {
     }
 }
 
+#[cfg(feature = "rayon")]
+#[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
+impl<K, V, S> OnceMap<K, V, S>
+where
+    K: Send,
+    V: Send,
+{
+    pub fn into_par_iter(self) -> impl rayon::iter::ParallelIterator<Item = (K, V)> {
+        self.map.into_inner().into_par_iter()
+    }
+}
+
 impl<K, V, S> OnceMap<K, V, S>
 where
     K: Eq + Hash,

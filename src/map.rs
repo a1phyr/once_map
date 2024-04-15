@@ -103,6 +103,18 @@ impl<K, V> HashMap<K, V> {
 #[cfg(feature = "rayon")]
 impl<K, V> HashMap<K, V>
 where
+    K: Send,
+    V: Send,
+{
+    #[inline]
+    pub fn into_par_iter(self) -> impl rayon::iter::ParallelIterator<Item = (K, V)> {
+        self.0.into_par_iter()
+    }
+}
+
+#[cfg(feature = "rayon")]
+impl<K, V> HashMap<K, V>
+where
     K: Sync,
     V: Sync,
 {
