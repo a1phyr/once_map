@@ -400,6 +400,10 @@ impl<'a, K, V, S> ReadOnlyView<'a, K, V, S> {
         self.map.is_empty()
     }
 
+    pub fn hasher(&self) -> &S {
+        self.hash_builder
+    }
+
     pub fn iter(&self) -> impl Iterator<Item = (&K, &V)> {
         self.map.iter()
     }

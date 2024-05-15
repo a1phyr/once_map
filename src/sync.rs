@@ -818,6 +818,10 @@ impl<'a, K, V, S> ReadOnlyView<'a, K, V, S> {
         self.iter_shards().all(|s| s.is_empty())
     }
 
+    pub fn hasher(&self) -> &S {
+        self.hasher
+    }
+
     pub fn iter(&self) -> impl Iterator<Item = (&K, &V)> {
         self.iter_shards().flat_map(|shard| shard.iter())
     }
