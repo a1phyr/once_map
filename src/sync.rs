@@ -181,7 +181,7 @@ struct Shard<K, V> {
 }
 
 impl<K, V> Shard<K, V> {
-    const fn new() -> Self {
+    fn new() -> Self {
         Self {
             map: RwLock::new(HashMap::new()),
             waiters: Mutex::new(HashMap::new()),
