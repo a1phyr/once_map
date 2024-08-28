@@ -922,6 +922,16 @@ where
     }
 }
 
+/// A map where values are automatically filled at access.
+///
+/// This type can be shared across threads.
+///
+/// ```
+/// let map = once_map::LazyMap::new(|x: &i32| x.to_string());
+///
+/// assert_eq!(&map[&3], "3");
+/// assert_eq!(map.get(&-67), "-67");
+/// ```
 pub struct LazyMap<K, V, S = crate::RandomState, F = fn(&K) -> V> {
     map: OnceMap<K, V, S>,
     init: F,
@@ -941,6 +951,7 @@ impl<K, V, S, F> LazyMap<K, V, S, F> {
         }
     }
 
+    /// Removes all entries from the map.
     pub fn clear(&mut self) {
         self.map.clear();
     }
