@@ -237,6 +237,10 @@ impl<K, V> OccupiedEntry<'_, K, V> {
     pub fn get(&self) -> &V {
         &self.0.get().1
     }
+
+    pub fn get_mut(&mut self) -> &mut (K, V) {
+        self.0.get_mut()
+    }
 }
 
 pub struct VacantEntry<'a, K, V>(hash_table::VacantEntry<'a, (K, V)>);

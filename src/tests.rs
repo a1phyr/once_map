@@ -87,6 +87,31 @@ fn lazy() {
     assert_eq!(init_count.get(), 2)
 }
 
+#[test]
+fn wait() {
+    let store = OnceMap::new();
+
+    store.insert(4, |_| "4");
+    assert_eq!(store.wait(&4), "4");
+
+    thread::scope(|s| {
+        s.spawn(|| {
+            thread::sleep(time::Duration::from_millis(50));
+            store.insert(3, |_| "3");
+        });
+        assert_eq!(store.wait(&3), "3");
+    });
+
+    thread::scope(|s| {
+        s.spawn(|| assert_eq!(store.wait(&7), "7"));
+        s.spawn(|| assert_eq!(store.wait(&7), "7"));
+        s.spawn(|| assert_eq!(store.wait(&7), "7"));
+
+        thread::sleep(time::Duration::from_millis(50));
+        store.insert(7, |_| "7");
+    });
+}
+
 #[cfg(feature = "rayon")]
 #[test]
 fn rayon() {

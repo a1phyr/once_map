@@ -156,7 +156,7 @@ impl Drop for BarrierGuard<'_> {
     }
 }
 
-type Waiters<K> = Mutex<HashMap<ValidPtr<K>, ValidPtr<WaitingBarrier>>>;
+type Waiters<K> = Mutex<HashMap<ValidPtr<K>, (bool, ValidPtr<WaitingBarrier>)>>;
 
 struct WaitersGuard<'a, K: Eq + Hash> {
     waiters: &'a Waiters<K>,
@@ -238,14 +238,26 @@ where
             drop(map);
 
             match writing.entry(hash, &key, hasher) {
-                map::Entry::Occupied(entry) => {
+                map::Entry::Occupied(mut entry) => {
+                    let barrier_ref = ValidPtr(NonNull::from(&barrier));
+
+                    let &(is_waiter, barrier) = entry.get();
+                    let barrier = unsafe { barrier.0.as_ref() };
+
+                    if is_waiter {
+                        barrier.notify_all();
+
+                        let key_ref = ValidPtr(NonNull::from(&key));
+                        *entry.get_mut() = (key_ref, (false, barrier_ref));
+                        break;
+                    }
+
                     // Somebody is already writing this value ! Wait until it
                     // is done, then start again.
 
                     // Safety: We call `prepare_wait` before dropping the mutex
                     // guard, so the barrier is guaranteed to be valid for the
                     // wait even if it was removed from the map.
-                    let barrier = unsafe { entry.get().0.as_ref() };
                     let waiter = barrier.prepare_waiting();
 
                     // Ensure that other threads will be able to use the mutex
@@ -259,7 +271,7 @@ where
                     // on it.
                     let key_ref = ValidPtr(NonNull::from(&key));
                     let barrier_ref = ValidPtr(NonNull::from(&barrier));
-                    entry.insert(key_ref, barrier_ref);
+                    entry.insert(key_ref, (false, barrier_ref));
                     break;
                 }
             }
@@ -293,7 +305,7 @@ where
         let mut writing = self.waiters.lock();
 
         match writing.remove(hash, &key) {
-            Some(b) => debug_assert!(core::ptr::eq(b.0.as_ptr(), &barrier)),
+            Some(b) => debug_assert!(core::ptr::eq(b.1 .0.as_ptr(), &barrier)),
             None => debug_assert!(false),
         }
 
@@ -310,6 +322,69 @@ where
         Ok(ret)
 
         // Leaving the function will wake up waiting threads.
+    }
+
+    fn wait<T>(
+        &self,
+        hash: u64,
+        key: &K,
+        hasher: &impl BuildHasher,
+        with_result: impl FnOnce(&K, &V) -> T,
+    ) -> T {
+        let barrier = WaitingBarrier::new();
+
+        loop {
+            // If a value already exists, we're done
+            let map = self.map.read();
+            if let Some((key, value)) = map.get_key_value(hash, key) {
+                return with_result(key, value);
+            }
+
+            // Else try to register ourselves as willing to write
+            let mut writing = self.waiters.lock();
+
+            drop(map);
+
+            match writing.entry(hash, key, hasher) {
+                map::Entry::Occupied(entry) => {
+                    let barrier = unsafe { entry.get().1 .0.as_ref() };
+
+                    // Somebody is already writing this value ! Wait until it
+                    // is done, then start again.
+
+                    // Safety: We call `prepare_wait` before dropping the mutex
+                    // guard, so the barrier is guaranteed to be valid for the
+                    // wait even if it was removed from the map.
+                    let waiter = barrier.prepare_waiting();
+
+                    // Ensure that other threads will be able to use the mutex
+                    // while we wait for the value's writing to complete
+                    drop(writing);
+                    waiter.wait();
+                    continue;
+                }
+                map::Entry::Vacant(entry) => {
+                    // We're the first ! Register our barrier so other can wait
+                    // on it.
+                    let key_ref = ValidPtr(NonNull::from(key));
+                    let barrier_ref = ValidPtr(NonNull::from(&barrier));
+                    entry.insert(key_ref, (true, barrier_ref));
+
+                    // No one is writing this value yet !
+
+                    // Safety: We call `prepare_wait` before dropping the mutex
+                    // guard, so the barrier is guaranteed to be valid for the
+                    // wait even if it was removed from the map.
+                    let waiter = barrier.prepare_waiting();
+
+                    // Ensure that other threads will be able to use the mutex
+                    // while we wait for the value's writing to complete
+                    drop(writing);
+                    waiter.wait();
+                    continue;
+                }
+            }
+        }
     }
 
     pub fn contains_key<Q>(&self, hash: u64, key: &Q) -> bool
@@ -495,6 +570,10 @@ where
     ) -> Result<&V::Target, E> {
         self.map_try_insert(key, make_val, |_, v| unsafe { extend_lifetime(v) })
     }
+
+    pub fn wait(&self, key: &K) -> &V::Target {
+        self.map_wait(key, |_, v| unsafe { extend_lifetime(v) })
+    }
 }
 
 impl<K, V, S> OnceMap<K, V, S>
@@ -520,6 +599,10 @@ where
         make_val: impl FnOnce(&K) -> Result<V, E>,
     ) -> Result<V, E> {
         self.map_try_insert(key, make_val, |_, v| v.clone())
+    }
+
+    pub fn wait_cloned(&self, key: &K) -> V {
+        self.map_wait(key, |_, v| v.clone())
     }
 }
 
@@ -599,6 +682,12 @@ where
             },
             |with_result, k, v| with_result(k, v),
         )
+    }
+
+    pub fn map_wait<T>(&self, key: &K, with_result: impl FnOnce(&K, &V) -> T) -> T {
+        let hash = self.hash_one(key);
+        self.get_shard(hash)
+            .wait(hash, key, &self.hash_builder, with_result)
     }
 
     pub fn get_or_try_insert<T, U, E>(
