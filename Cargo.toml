@@ -18,13 +18,13 @@ keywords = ["map", "once", "lazy"]
 default = ["std", "ahash"]
 
 std = ["dep:parking_lot", "stable_deref_trait/std", "ahash?/std", "ahash?/runtime-rng"]
-ahash = ["dep:ahash", "hashbrown/ahash"]
+ahash = ["dep:ahash"]
 
 rayon = ["dep:rayon", "hashbrown/rayon", "std"]
 
 [dependencies]
 ahash = { version = "0.8", default-features = false, optional = true }
-hashbrown = { version = "0.14.2", default-features = false }
+hashbrown = { version = "0.15", default-features = false }
 stable_deref_trait = { version = "1.2", features = ["alloc"], default-features = false }
 
 equivalent = { version = "1.0", optional = true }
