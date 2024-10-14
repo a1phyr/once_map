@@ -759,6 +759,63 @@ where
     }
 }
 
+#[cfg(feature = "serde")]
+#[cfg_attr(docsrs, doc(cfg(feature = "serde")))]
+impl<K, V, S> serde::Serialize for OnceMap<K, V, S>
+where
+    K: serde::Serialize,
+    V: serde::Serialize,
+{
+    fn serialize<Ser>(&self, serializer: Ser) -> Result<Ser::Ok, Ser::Error>
+    where
+        Ser: serde::Serializer,
+    {
+        serializer.collect_map(self.read_only_view().iter())
+    }
+}
+
+#[cfg(feature = "serde")]
+#[cfg_attr(docsrs, doc(cfg(feature = "serde")))]
+impl<'de, K, V, S> serde::Deserialize<'de> for OnceMap<K, V, S>
+where
+    K: Eq + Hash + serde::Deserialize<'de>,
+    V: serde::Deserialize<'de>,
+    S: BuildHasher + Default,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct OnceMapVisitor<K, V, S>(OnceMap<K, V, S>);
+
+        impl<'de, K, V, S> serde::de::Visitor<'de> for OnceMapVisitor<K, V, S>
+        where
+            K: Eq + Hash + serde::Deserialize<'de>,
+            V: serde::Deserialize<'de>,
+            S: BuildHasher,
+        {
+            type Value = OnceMap<K, V, S>;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a map")
+            }
+
+            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+            where
+                A: serde::de::MapAccess<'de>,
+            {
+                while let Some((key, value)) = map.next_entry()? {
+                    self.0.map_insert(key, |_| value, |_, _| ())
+                }
+
+                Ok(self.0)
+            }
+        }
+
+        deserializer.deserialize_map(OnceMapVisitor(OnceMap::default()))
+    }
+}
+
 impl<K, V, S> fmt::Debug for OnceMap<K, V, S>
 where
     K: fmt::Debug,
@@ -909,6 +966,21 @@ where
 
     pub fn par_values(&self) -> impl rayon::iter::ParallelIterator<Item = &V> {
         self.par_iter_shards().flat_map(|shard| shard.par_values())
+    }
+}
+
+#[cfg(feature = "serde")]
+#[cfg_attr(docsrs, doc(cfg(feature = "serde")))]
+impl<K, V, S> serde::Serialize for ReadOnlyView<'_, K, V, S>
+where
+    K: serde::Serialize,
+    V: serde::Serialize,
+{
+    fn serialize<Ser>(&self, serializer: Ser) -> Result<Ser::Ok, Ser::Error>
+    where
+        Ser: serde::Serializer,
+    {
+        serializer.collect_map(self.iter())
     }
 }
 
