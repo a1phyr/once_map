@@ -232,7 +232,7 @@ pub enum Entry<'a, K, V> {
 
 pub struct OccupiedEntry<'a, K, V>(hash_table::OccupiedEntry<'a, (K, V)>);
 
-impl<'a, K, V> OccupiedEntry<'a, K, V> {
+impl<K, V> OccupiedEntry<'_, K, V> {
     #[inline]
     pub fn get(&self) -> &V {
         &self.0.get().1

@@ -95,7 +95,6 @@ impl<T: Eq> Eq for ValidPtr<T> {}
 
 /// Looks like a Condvar, but wait for all notified threads to wake up when
 /// calling `notify_all`.
-
 struct WaitingBarrier {
     condvar: Condvar,
     n_waiters: Mutex<usize>,
@@ -165,7 +164,7 @@ struct WaitersGuard<'a, K: Eq + Hash> {
     hash: u64,
 }
 
-impl<'a, K: Eq + Hash> Drop for WaitersGuard<'a, K> {
+impl<K: Eq + Hash> Drop for WaitersGuard<'_, K> {
     fn drop(&mut self) {
         let mut writing = self.waiters.lock();
         writing.remove(self.hash, self.key);
@@ -892,7 +891,7 @@ impl<'a, K, V, S> ReadOnlyView<'a, K, V, S> {
     }
 }
 
-impl<'a, K, V, S> ReadOnlyView<'a, K, V, S>
+impl<K, V, S> ReadOnlyView<'_, K, V, S>
 where
     K: Eq + Hash,
     S: BuildHasher,
@@ -946,7 +945,7 @@ impl<K, V, S> Drop for ReadOnlyView<'_, K, V, S> {
 
 #[cfg(feature = "rayon")]
 #[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
-impl<'a, K, V, S> ReadOnlyView<'a, K, V, S>
+impl<K, V, S> ReadOnlyView<'_, K, V, S>
 where
     K: Sync,
     V: Sync,

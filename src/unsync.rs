@@ -474,7 +474,7 @@ impl<'a, K, V, S> ReadOnlyView<'a, K, V, S> {
     }
 }
 
-impl<'a, K, V, S> ReadOnlyView<'a, K, V, S>
+impl<K, V, S> ReadOnlyView<'_, K, V, S>
 where
     K: Eq + Hash,
     S: BuildHasher,
@@ -513,7 +513,7 @@ where
 
 #[cfg(feature = "rayon")]
 #[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
-impl<'a, K, V, S> ReadOnlyView<'a, K, V, S>
+impl<K, V, S> ReadOnlyView<'_, K, V, S>
 where
     K: Sync,
     V: Sync,
@@ -546,7 +546,7 @@ where
     }
 }
 
-impl<'a, K, V, S> fmt::Debug for ReadOnlyView<'a, K, V, S>
+impl<K, V, S> fmt::Debug for ReadOnlyView<'_, K, V, S>
 where
     K: fmt::Debug,
     V: fmt::Debug,
