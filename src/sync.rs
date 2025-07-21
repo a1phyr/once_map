@@ -114,7 +114,7 @@ impl WaitingBarrier {
     }
 
     /// Registers ourselves as willing to wait
-    fn prepare_waiting(&self) -> Waiter {
+    fn prepare_waiting(&self) -> Waiter<'_> {
         let mut guard = self.n_waiters.lock();
         *guard += 1;
         Waiter {
@@ -395,7 +395,7 @@ impl<K, V, S> OnceMap<K, V, S> {
     ///
     /// This enables more methods, such as iterating on the maps, but will cause
     /// a deadlock if trying to insert values in the map from the same thread.
-    pub fn read_only_view(&self) -> ReadOnlyView<K, V, S> {
+    pub fn read_only_view(&self) -> ReadOnlyView<'_, K, V, S> {
         ReadOnlyView::new(self)
     }
 }

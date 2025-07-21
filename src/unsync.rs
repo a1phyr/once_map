@@ -46,7 +46,7 @@ impl<K, V, S> OnceMap<K, V, S> {
     ///
     /// This enables more methods, such as iterating on the maps, but will cause
     /// a panic if trying to insert values in the map while the view is live.
-    pub fn read_only_view(&self) -> ReadOnlyView<K, V, S> {
+    pub fn read_only_view(&self) -> ReadOnlyView<'_, K, V, S> {
         ReadOnlyView::new(self)
     }
 

@@ -171,7 +171,7 @@ where
     }
 
     #[inline]
-    pub fn entry<Q, S>(&mut self, hash: u64, k: &Q, hasher: &S) -> Entry<K, V>
+    pub fn entry<Q, S>(&mut self, hash: u64, k: &Q, hasher: &S) -> Entry<'_, K, V>
     where
         Q: Hash + Equivalent<K> + ?Sized,
         S: core::hash::BuildHasher,
