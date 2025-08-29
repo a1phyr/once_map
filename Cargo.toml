@@ -1,8 +1,8 @@
 [package]
 name = "once_map"
-version = "0.4.21"
+version = "0.4.22"
 edition = "2021"
-rust-version = "1.63"
+rust-version = "1.65"
 license = "MIT OR Apache-2.0"
 readme = "README.md"
 description = "Single assignment and lazy maps"
