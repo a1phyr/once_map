@@ -24,7 +24,7 @@ rayon = ["dep:rayon", "hashbrown/rayon", "std"]
 
 [dependencies]
 ahash = { version = "0.8", default-features = false, optional = true }
-hashbrown = { version = "0.15", default-features = false }
+hashbrown = { version = "0.16", default-features = false }
 stable_deref_trait = { version = "1.2", features = ["alloc"], default-features = false }
 
 equivalent = { version = "1.0", optional = true }
