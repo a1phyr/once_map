@@ -9,6 +9,8 @@ use core::{
 use parking_lot::{Condvar, Mutex, MutexGuard, RwLock};
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
+#[cfg(feature = "serde")]
+use serde_core as serde;
 use stable_deref_trait::StableDeref;
 
 #[cfg(feature = "std")]

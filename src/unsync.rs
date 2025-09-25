@@ -4,6 +4,8 @@ use core::{
     fmt,
     hash::{BuildHasher, Hash},
 };
+#[cfg(feature = "serde")]
+use serde_core as serde;
 use stable_deref_trait::StableDeref;
 
 unsafe fn extend_lifetime<'a, T: StableDeref>(ptr: &T) -> &'a T::Target {
